@@ -1,0 +1,28 @@
+{
+  "name": "sopon-monorepo",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "build": "pnpm -r --filter=!sopon-monorepo run build",
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @sopon/api run dev",
+    "dev:worker": "pnpm --filter @sopon/worker run dev",
+    "dev:web": "pnpm --filter @sopon/web run dev",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:generate": "pnpm --filter @sopon/database db:generate",
+    "db:migrate": "pnpm --filter @sopon/database db:migrate",
+    "db:push": "pnpm --filter @sopon/database db:push",
+    "db:seed": "pnpm --filter @sopon/database db:seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "clean": "pnpm -r exec rimraf dist .next .turbo node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "prettier": "^3.5.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  }
+}

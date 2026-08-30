@@ -1,0 +1,26 @@
+{
+  "name": "@sopon/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo worker-ok"
+  },
+  "dependencies": {
+    "@sopon/config": "workspace:*",
+    "@sopon/contracts": "workspace:*",
+    "@sopon/database": "workspace:*",
+    "bullmq": "^5.41.6",
+    "ioredis": "^5.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.3"
+  }
+}

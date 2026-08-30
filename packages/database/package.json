@@ -1,0 +1,26 @@
+{
+  "name": "@sopon/database",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "ts-node src/seed.ts",
+    "test": "echo database-ok"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@sopon/config": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
