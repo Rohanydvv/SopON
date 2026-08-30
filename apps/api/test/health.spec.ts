@@ -1,4 +1,4 @@
-﻿import { Test, TestingModule } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
 import { HealthService } from '../src/modules/health/health.service';
 import { HealthController } from '../src/modules/health/health.controller';
 

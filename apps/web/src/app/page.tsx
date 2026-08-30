@@ -1,4 +1,4 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 import { ShieldCheck, Activity, Brain, Server, ArrowRight } from 'lucide-react';
 
 export default function Home() {

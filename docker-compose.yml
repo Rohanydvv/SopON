@@ -1,4 +1,4 @@
-﻿name: sopon
+name: sopon
 
 services:
   postgres:

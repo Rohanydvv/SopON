@@ -2,7 +2,7 @@
   "name": "@sopon/ai",
   "version": "0.1.0",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -10,8 +10,8 @@
     "test": "echo ai-ok"
   },
   "dependencies": {
-    "@sopon/contracts": "workspace:*",
     "@sopon/config": "workspace:*",
+    "@sopon/contracts": "workspace:*",
     "zod": "^3.24.2"
   },
   "devDependencies": {
