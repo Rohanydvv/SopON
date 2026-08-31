@@ -51,8 +51,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm approve-builds --all || true
 
-      - name: Generate Database Client
-        run: pnpm db:generate
+      - name: Generate Database Client & Push Schema
+        run: |
+          pnpm db:generate
+          pnpm --filter @sopon/database db:push --skip-generate
         env:
           DATABASE_URL: postgresql://sopon:sopon_secret@localhost:5432/sopon_test_db
 
