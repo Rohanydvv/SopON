@@ -6,6 +6,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { MembersModule } from './modules/members/members.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { ServicesModule } from './modules/services/services.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { IncidentsModule } from './modules/incidents/incidents.module';
 
 @Module({
   imports: [
@@ -20,6 +23,9 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
     OrganizationsModule,
     MembersModule,
     InvitationsModule,
+    ServicesModule,
+    IntegrationsModule,
+    IncidentsModule,
   ],
   providers: [
     {

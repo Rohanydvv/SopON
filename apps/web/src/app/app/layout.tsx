@@ -16,6 +16,7 @@ import {
   Loader2,
   Check,
   Layers,
+  Radio,
 } from 'lucide-react';
 import { fetchApi } from '@/lib/api';
 import { OrganizationResponse, UserRole } from '@sopon/contracts';
@@ -87,7 +88,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { label: 'Overview', href: '/app', icon: Layers },
+    { label: 'Incidents', href: '/app/incidents', icon: AlertTriangle },
+    { label: 'Services Catalog', href: '/app/services', icon: Server },
     { label: 'Team Members', href: '/app/settings/members', icon: Users },
+    { label: 'Integrations', href: '/app/settings/integrations', icon: Radio },
   ];
 
   return (
@@ -197,12 +201,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Left Navigation Sidebar */}
         <aside className="w-60 border-r border-slate-800 bg-slate-900/40 p-4 shrink-0 hidden md:block">
           <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">
-            Navigation
+            Operations
           </div>
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/app' && pathname.startsWith(item.href));
               return (
                 <Link
                   key={item.href}

@@ -93,6 +93,7 @@ model User {
   teamMemberships   TeamMember[]
   assignedIncidents Incident[]        @relation("IncidentAssignee")
   incidentComments  IncidentComment[]
+  timelineEvents    IncidentTimeline[]
   notifications     Notification[]
   auditLogs         AuditLog[]
 
@@ -112,6 +113,7 @@ model Organization {
   teams              Team[]
   services           Service[]
   incidents          Incident[]
+  integrations       Integration[]
   slaPolicies        SLAPolicy[]
   knowledgeDocuments KnowledgeDocument[]
   knowledgeChunks    KnowledgeChunk[]
@@ -195,8 +197,11 @@ model Service {
   teamId         String?
   name           String
   slug           String
+  description    String?
+  tier           String             @default("Tier 2")
   environment    ServiceEnvironment @default(PRODUCTION)
   status         ServiceStatus      @default(OPERATIONAL)
+  repositoryUrl  String?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
@@ -204,7 +209,7 @@ model Service {
   team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
   incidents    Incident[]
 
-  @@unique([organizationId, slug, environment])
+  @@unique([organizationId, slug])
   @@index([organizationId, status])
   @@map("services")
 }
@@ -221,6 +226,7 @@ model Incident {
   severity        IncidentSeverity @default(MEDIUM)
   priority        IncidentPriority @default(P3)
   source          String           @default("MANUAL")
+  metadataJson    Json?
   detectedAt      DateTime         @default(now())
   acknowledgedAt  DateTime?
   investigatingAt DateTime?
@@ -232,9 +238,10 @@ model Incident {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   service      Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   team         Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  assignee     User?                @relation("IncidentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeUser User?                @relation("IncidentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   events       IncidentEvent[]
   comments     IncidentComment[]
+  timeline     IncidentTimeline[]
   assignments  IncidentAssignment[]
   sla          IncidentSLA?
   aiAnalyses   AIAnalysis[]
@@ -247,12 +254,12 @@ model Incident {
 }
 
 model IncidentEvent {
-  id         String   @id @default(uuid())
-  incidentId String
-  type       String
+  id          String   @id @default(uuid())
+  incidentId  String
+  type        String
   payloadJson Json?
-  occurredAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  occurredAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
@@ -275,6 +282,22 @@ model IncidentComment {
   @@map("incident_comments")
 }
 
+model IncidentTimeline {
+  id           String   @id @default(uuid())
+  incidentId   String
+  actorUserId  String?
+  eventType    String
+  message      String
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  incident  Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actorUser User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_timeline")
+}
+
 model IncidentAssignment {
   id           String    @id @default(uuid())
   incidentId   String
@@ -288,6 +311,24 @@ model IncidentAssignment {
 
   @@index([incidentId, assignedAt])
   @@map("incident_assignments")
+}
+
+model Integration {
+  id             String   @id @default(uuid())
+  organizationId String
+  type           String
+  name           String
+  key            String   @unique
+  secret         String
+  configJson     Json?
+  isEnabled      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, type])
+  @@map("integrations")
 }
 
 model SLAPolicy {

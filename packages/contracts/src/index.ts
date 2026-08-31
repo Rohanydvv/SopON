@@ -5,4 +5,6 @@ export * from './auth.dto';
 export * from './organization.dto';
 export * from './member.dto';
 export * from './invitation.dto';
+export * from './service.dto';
 export * from './incident.dto';
+export * from './integration.dto';
