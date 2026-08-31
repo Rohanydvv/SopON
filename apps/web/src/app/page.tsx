@@ -1,110 +1,105 @@
 import Link from 'next/link';
-import { ShieldCheck, Activity, Brain, Server, ArrowRight } from 'lucide-react';
+import { ShieldCheck, Activity, Brain, Server, ArrowRight, Lock, Users, Zap } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col justify-between">
-      {/* Top Navigation */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm">
-              S
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
+      {/* Navigation Header */}
+      <header className="border-b border-slate-800/80 bg-slate-900/50 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
+              <ShieldCheck className="h-5 w-5" />
             </div>
-            <span className="font-bold text-xl tracking-tight text-slate-900">SopON</span>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              Operations Platform
-            </span>
+            <span className="font-bold text-xl tracking-tight text-white">SopON</span>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
             <Link
               href="/login"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+              className="text-sm font-medium text-slate-300 hover:text-white px-3 py-1.5 transition-colors"
             >
               Sign In
             </Link>
             <Link
               href="/register"
-              className="text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md shadow-sm transition-colors"
+              className="text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-indigo-600/20"
             >
-              Get Started
+              Create Account
             </Link>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 flex flex-col items-center text-center justify-center">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold mb-6">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Foundation Layer Active • Modular Monolith Architecture</span>
+      <main className="max-w-7xl mx-auto px-6 py-20 flex flex-col items-center text-center">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-6">
+          <Zap className="h-4 w-4" />
+          Multi-Tenant Incident Operations Platform
         </div>
 
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 max-w-4xl">
-          Multi-tenant AI-powered incident & operations platform
+        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight max-w-4xl text-white">
+          AI-Powered Incident Response & Site Reliability Engineering
         </h1>
 
-        <p className="mt-6 text-lg sm:text-xl text-slate-600 max-w-2xl">
-          Centralize technical incidents, track SLAs, prevent breaches, automate RCA drafts, and empower engineers with evidence-backed RAG insights.
+        <p className="mt-6 text-lg sm:text-xl text-slate-400 max-w-2xl leading-relaxed">
+          Unify multi-tenant incident management, automated AI diagnostics, root cause analysis,
+          and secure role-based team collaboration.
         </p>
 
-        <div className="mt-10 flex flex-wrap gap-4 justify-center">
+        <div className="mt-10 flex flex-col sm:flex-row gap-4">
           <Link
-            href="/app"
-            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow-sm transition-all"
+            href="/register"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-base transition-colors shadow-xl shadow-indigo-600/25"
           >
-            <span>Launch Dashboard</span>
-            <ArrowRight className="w-4 h-4" />
+            Start Free Organization
+            <ArrowRight className="h-4 w-4" />
           </Link>
-          <a
-            href="http://localhost:4000/api/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-700 font-medium px-6 py-3 rounded-lg border border-slate-300 shadow-sm transition-all"
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold text-base transition-colors"
           >
-            <Server className="w-4 h-4 text-slate-500" />
-            <span>OpenAPI Docs</span>
-          </a>
+            Sign in to Workspace
+          </Link>
         </div>
 
-        {/* Feature Cards Grid */}
-        <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-6 w-full text-left">
-          <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mb-4">
-              <Activity className="w-5 h-5" />
+        {/* Feature Highlights */}
+        <div className="mt-24 grid grid-cols-1 md:grid-cols-3 gap-8 w-full text-left">
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
+              <Lock className="h-5 w-5" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900">Full Incident Lifecycle</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Strict state machine transitions from open, acknowledged, investigating to resolved and closed with full audit logging.
+            <h3 className="text-lg font-semibold text-white">Strict Multi-Tenancy</h3>
+            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+              Complete tenant data isolation verified at the database and API guard level with automated organization slugging.
             </p>
           </div>
 
-          <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs">
-            <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
-              <Brain className="w-5 h-5" />
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div className="h-10 w-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
+              <Users className="h-5 w-5" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900">Evidence-Based AI & RAG</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Provider-agnostic intelligence with structured JSON schemas, citation tracking, and strict tenant-isolated vector retrieval.
+            <h3 className="text-lg font-semibold text-white">Granular RBAC</h3>
+            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+              Hierarchical role-based access control supporting Owner, Admin, Manager, Engineer, and Viewer roles with secure token invites.
             </p>
           </div>
 
-          <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs">
-            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4">
-              <ShieldCheck className="w-5 h-5" />
+          <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
+              <Brain className="h-5 w-5" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900">Enterprise Multi-Tenancy</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Complete data isolation across organizations, RBAC permission enforcement, hashed API keys, and rate-limited ingestion.
+            <h3 className="text-lg font-semibold text-white">AI Diagnostics</h3>
+            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+              Pluggable Gemini & OpenAI reasoning engine for automated incident classification, summarization, and root-cause analysis.
             </p>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
-        SopON Operations System • Production-Grade Engineering
+      <footer className="border-t border-slate-900 py-8 text-center text-xs text-slate-600">
+        &copy; {new Date().getFullYear()} SopON Platform. All rights reserved.
       </footer>
     </div>
   );

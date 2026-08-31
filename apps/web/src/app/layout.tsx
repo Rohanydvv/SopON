@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AuthProvider } from '@/lib/auth-context';
 
 export const metadata: Metadata = {
-  title: 'SopON — AI-Powered Incident Operations',
-  description: 'Multi-tenant AI-powered incident and support operations platform',
+  title: 'SopON — AI-Powered Incident & Support Operations',
+  description: 'Multi-tenant AI-powered incident response and site reliability platform',
 };
 
 export default function RootLayout({
@@ -13,8 +14,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen antialiased bg-slate-50 text-slate-900">
-        {children}
+      <body className="min-h-screen antialiased bg-slate-950 text-slate-100 font-sans">
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
