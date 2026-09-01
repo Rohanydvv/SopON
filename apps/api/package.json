@@ -22,6 +22,7 @@
     "@nestjs/platform-fastify": "^11.0.11",
     "@nestjs/swagger": "^11.0.6",
     "@nestjs/throttler": "^6.4.0",
+    "@sopon/ai": "workspace:*",
     "@sopon/config": "workspace:*",
     "@sopon/contracts": "workspace:*",
     "@sopon/database": "workspace:*",

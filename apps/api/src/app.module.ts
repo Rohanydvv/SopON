@@ -9,6 +9,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module';
 import { ServicesModule } from './modules/services/services.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { IncidentsModule } from './modules/incidents/incidents.module';
+import { SopsModule } from './modules/sops/sops.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { IncidentsModule } from './modules/incidents/incidents.module';
     ServicesModule,
     IntegrationsModule,
     IncidentsModule,
+    SopsModule,
   ],
   providers: [
     {

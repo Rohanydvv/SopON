@@ -205,9 +205,10 @@ model Service {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  incidents    Incident[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team               Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  incidents          Incident[]
+  knowledgeDocuments KnowledgeDocument[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -365,18 +366,22 @@ model IncidentSLA {
 model KnowledgeDocument {
   id             String   @id @default(uuid())
   organizationId String
+  serviceId      String?
   title          String
-  sourceType     String   @default("DOCUMENT")
+  sourceType     String   @default("RUNBOOK")
   sourceUrl      String?
   content        String
+  tags           String[] @default([])
   version        Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   chunks       KnowledgeChunk[]
 
   @@index([organizationId, createdAt])
+  @@index([organizationId, serviceId])
   @@map("knowledge_documents")
 }
 
@@ -384,6 +389,8 @@ model KnowledgeChunk {
   id             String                 @id @default(uuid())
   documentId     String
   organizationId String
+  chunkIndex     Int                    @default(0)
+  tokenCount     Int                    @default(0)
   content        String
   embedding      Unsupported("vector")?
   metadataJson   Json?
@@ -393,6 +400,7 @@ model KnowledgeChunk {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([documentId])
   @@map("knowledge_chunks")
 }
 

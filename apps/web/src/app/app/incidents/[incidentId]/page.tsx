@@ -12,6 +12,7 @@ import {
   IncidentSeverity,
   IncidentStatus,
   MemberResponse,
+  RecommendedSopResponse,
   TimelineEventResponse,
   UpdateIncidentRequest,
 } from '@sopon/contracts';
@@ -29,6 +30,10 @@ import {
   Loader2,
   AlertCircle,
   Activity,
+  Sparkles,
+  BookOpen,
+  CheckSquare,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function IncidentWorkspacePage() {
@@ -39,7 +44,9 @@ export default function IncidentWorkspacePage() {
 
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [members, setMembers] = useState<MemberResponse[]>([]);
+  const [recommendedSops, setRecommendedSops] = useState<RecommendedSopResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSops, setIsLoadingSops] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Note composer state
@@ -68,6 +75,9 @@ export default function IncidentWorkspacePage() {
 
       setIncident(incRes.data);
       setMembers(membersRes.data);
+
+      // Load recommended SOPs
+      loadRecommendedSops();
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null && 'message' in err) {
         setError(String(err.message));
@@ -76,6 +86,24 @@ export default function IncidentWorkspacePage() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadRecommendedSops = async () => {
+    if (!activeOrg || !token || !incidentId) return;
+    setIsLoadingSops(true);
+
+    try {
+      const sopsRes = await fetchApi<RecommendedSopResponse[]>(
+        `/v1/organizations/${activeOrg.organizationId}/incidents/${incidentId}/recommended-sops`,
+        {},
+        token,
+      );
+      setRecommendedSops(sopsRes.data);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsLoadingSops(false);
     }
   };
 
@@ -379,8 +407,76 @@ export default function IncidentWorkspacePage() {
           </div>
         </div>
 
-        {/* Right Column: Activity Stream & Note Composer */}
+        {/* Right Column: AI Recommended SOPs & Activity Stream */}
         <div className="lg:col-span-2 space-y-6">
+          {/* AI Recommended SOPs Widget */}
+          <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-indigo-400" />
+                <h3 className="text-sm font-bold text-white">AI Recommended SOPs & Remediation</h3>
+              </div>
+              <span className="text-[11px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded font-mono font-medium">
+                RAG Matched
+              </span>
+            </div>
+
+            {isLoadingSops ? (
+              <div className="py-6 flex justify-center items-center text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
+              </div>
+            ) : recommendedSops.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-500 text-center">
+                No matching SOP runbooks found in your knowledge base for this incident.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recommendedSops.map((sop) => (
+                  <div
+                    key={sop.documentId}
+                    className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4 text-indigo-400" />
+                        <span className="text-sm font-bold text-white">{sop.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          {Math.round(sop.relevanceScore * 100)}% Match
+                        </span>
+                        <Link
+                          href={`/app/sops/${sop.documentId}`}
+                          target="_blank"
+                          className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                        >
+                          View <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {sop.remediationSteps.length > 0 && (
+                      <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
+                        <div className="text-[11px] font-semibold text-slate-400 uppercase">
+                          Recommended Action Steps:
+                        </div>
+                        <div className="space-y-1">
+                          {sop.remediationSteps.map((step, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-xs text-slate-200">
+                              <CheckSquare className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Activity Stream & Note Composer */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg p-6 space-y-6">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Activity className="h-4 w-4 text-indigo-400" />
