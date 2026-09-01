@@ -223,4 +223,43 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
       expect(json.data.length).toBe(0);
     });
   });
+
+  describe('4. External URL Webpage Ingestion & Content RAG Retrieval', () => {
+    it('should fetch external webpage, extract actual content, chunk it, and index for RAG', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/documents`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          title: 'Redis Connection Pooling Documentation',
+          sourceType: 'URL',
+          sourceUrl: 'https://redis.io/docs/latest/develop/clients/pools-and-muxing/',
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      const json = JSON.parse(res.body);
+      expect(json.data.title).toContain('Redis');
+      expect(json.data.chunkCount).toBeGreaterThanOrEqual(2);
+      expect(json.data.content).toContain('Connection pools and multiplexing');
+      expect(json.data.content).not.toBe('https://redis.io/docs/latest/develop/clients/pools-and-muxing/');
+
+      // Perform RAG search for specific documentation terms
+      const searchRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/rag/search`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          query: 'connection pooling multiplexing Redis',
+          topK: 3,
+        },
+      });
+
+      expect(searchRes.statusCode).toBe(201);
+      const searchJson = JSON.parse(searchRes.body);
+      expect(searchJson.data.length).toBeGreaterThanOrEqual(1);
+      expect(searchJson.data[0].content).toContain('Connection pools and multiplexing');
+      expect(searchJson.data[0].content.length).toBeGreaterThan(100);
+    });
+  });
 });

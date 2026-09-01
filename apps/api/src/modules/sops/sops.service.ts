@@ -16,6 +16,7 @@ import {
 } from '@sopon/contracts';
 import {
   cosineSimilarity,
+  fetchWebpageContent,
   formatVectorForPg,
   generateEmbedding,
   generateEmbeddings,
@@ -41,20 +42,63 @@ export class SopsService {
       }
     }
 
+    let finalTitle = data.title ? data.title.trim() : '';
+    let finalContent = data.content ? data.content.trim() : '';
+    let targetUrl: string | null = data.sourceUrl ? data.sourceUrl.trim() : null;
+
+    // Check if content itself is a URL or sourceType is URL
+    if (
+      data.sourceType === 'URL' ||
+      targetUrl ||
+      finalContent.startsWith('http://') ||
+      finalContent.startsWith('https://')
+    ) {
+      if (!targetUrl && (finalContent.startsWith('http://') || finalContent.startsWith('https://'))) {
+        targetUrl = finalContent;
+      }
+
+      if (targetUrl) {
+        try {
+          const fetched = await fetchWebpageContent(targetUrl);
+          finalContent = fetched.content;
+          if (!finalTitle && fetched.title) {
+            finalTitle = fetched.title;
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : 'Unknown network error';
+          throw new BadRequestException({
+            code: ErrorCodes.VALIDATION_ERROR,
+            message: `Failed to fetch external URL content: ${errMsg}`,
+          });
+        }
+      }
+    }
+
+    if (!finalTitle) {
+      finalTitle = targetUrl ? `Webpage: ${targetUrl}` : 'Untitled SOP Document';
+    }
+
+    if (!finalContent || finalContent.length < 5) {
+      throw new BadRequestException({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message: 'Document content could not be extracted or is empty',
+      });
+    }
+
     const doc = await prisma.knowledgeDocument.create({
       data: {
         organizationId: orgId,
         serviceId: data.serviceId || null,
-        title: data.title.trim(),
-        content: data.content.trim(),
-        sourceType: data.sourceType || 'RUNBOOK',
-        sourceUrl: data.sourceUrl || null,
+        title: finalTitle,
+        content: finalContent,
+        sourceType: data.sourceType || (targetUrl ? 'URL' : 'RUNBOOK'),
+        sourceUrl: targetUrl,
         tags: data.tags || [],
         version: 1,
       },
     });
 
-    // Chunk document and generate vector embeddings
+    // Chunk document and generate vector embeddings across all extracted sections
     await this.indexDocumentChunks(doc.id, orgId, doc.content);
 
     await prisma.auditLog.create({
@@ -64,7 +108,7 @@ export class SopsService {
         action: 'SOP_DOCUMENT_CREATE',
         entityType: 'KnowledgeDocument',
         entityId: doc.id,
-        metadataJson: { title: doc.title, sourceType: doc.sourceType },
+        metadataJson: { title: doc.title, sourceType: doc.sourceType, sourceUrl: targetUrl },
       },
     });
 
@@ -164,6 +208,23 @@ export class SopsService {
 
     if (data.sourceUrl !== undefined) {
       updateData.sourceUrl = data.sourceUrl || null;
+      if (
+        data.sourceUrl &&
+        data.sourceUrl !== existing.sourceUrl &&
+        (data.sourceType === 'URL' || existing.sourceType === 'URL')
+      ) {
+        try {
+          const fetched = await fetchWebpageContent(data.sourceUrl);
+          updateData.content = fetched.content;
+          shouldReindex = true;
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : 'Unknown network error';
+          throw new BadRequestException({
+            code: ErrorCodes.VALIDATION_ERROR,
+            message: `Failed to fetch external URL content: ${errMsg}`,
+          });
+        }
+      }
     }
 
     if (data.serviceId !== undefined) {
@@ -248,7 +309,7 @@ export class SopsService {
     orgId: string,
     query: string,
     topK = 5,
-    minScore = 0.25,
+    minScore = 0.15,
     serviceId?: string,
   ): Promise<RagSearchResultResponse[]> {
     const queryVector = await generateEmbedding(query);
@@ -286,7 +347,7 @@ export class SopsService {
       >(sql);
 
       if (rawResults && rawResults.length > 0) {
-        return rawResults
+        const filtered = rawResults
           .map((r) => ({
             chunkId: r.chunkId,
             documentId: r.documentId,
@@ -296,6 +357,10 @@ export class SopsService {
             similarityScore: Number(r.similarityScore) || 0,
           }))
           .filter((r) => r.similarityScore >= minScore);
+
+        if (filtered.length > 0) {
+          return filtered;
+        }
       }
     } catch {
       // Fallback to in-memory vector matching

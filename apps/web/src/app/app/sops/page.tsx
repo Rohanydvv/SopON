@@ -24,7 +24,9 @@ import {
   AlertCircle,
   ArrowRight,
   Layers,
+  Globe,
   CheckCircle2,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function SopsPage() {
@@ -47,6 +49,7 @@ export default function SopsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [sourceType, setSourceType] = useState<DocumentSourceType>('RUNBOOK');
+  const [sourceUrl, setSourceUrl] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,8 +101,9 @@ export default function SopsPage() {
       const payload: CreateDocumentRequest = {
         title: title.trim(),
         sourceType,
+        sourceUrl: sourceType === 'URL' ? sourceUrl.trim() : undefined,
         serviceId: serviceId || undefined,
-        content: content.trim(),
+        content: sourceType === 'URL' ? (content.trim() || undefined) : content.trim(),
       };
 
       await fetchApi(
@@ -113,6 +117,7 @@ export default function SopsPage() {
 
       setIsCreateModalOpen(false);
       setTitle('');
+      setSourceUrl('');
       setContent('');
       setServiceId('');
       await loadData();
@@ -233,7 +238,7 @@ Describe the purpose of this SOP and the architecture components involved.
             SOPs & Runbook Knowledge Base
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Centralized operational runbooks, architectural documentation, and pgvector semantic retrieval for {activeOrg?.organizationName}.
+            Centralized operational runbooks, external docs, and pgvector semantic retrieval for {activeOrg?.organizationName}.
           </p>
         </div>
 
@@ -243,7 +248,7 @@ Describe the purpose of this SOP and the architecture components involved.
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-indigo-600/20"
           >
             <Plus className="h-4 w-4" />
-            Create SOP / Runbook
+            Create SOP / Ingest URL
           </button>
         )}
       </div>
@@ -265,7 +270,7 @@ Describe the purpose of this SOP and the architecture components involved.
           </span>
         </div>
         <p className="text-xs text-slate-400">
-          Test similarity matching across all chunked SOPs in your organization. Query natural language incident symptoms or errors.
+          Test similarity matching across all chunked SOPs and external documentation in your organization. Query natural language incident symptoms or errors.
         </p>
 
         <form onSubmit={handleRagSearch} className="flex gap-2">
@@ -275,7 +280,7 @@ Describe the purpose of this SOP and the architecture components involved.
               type="text"
               value={ragQuery}
               onChange={(e) => setRagQuery(e.target.value)}
-              placeholder="e.g. Redis connection timeout during payment authorization..."
+              placeholder="e.g. connection pooling multiplexing Redis or connection timeout..."
               className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -326,7 +331,7 @@ Describe the purpose of this SOP and the architecture components involved.
                         {Math.round(r.similarityScore * 100)}% Match
                       </span>
                     </div>
-                    <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed font-mono">
                       {r.content}
                     </p>
                   </Link>
@@ -376,7 +381,7 @@ Describe the purpose of this SOP and the architecture components involved.
             <BookOpen className="h-10 w-10 text-slate-600 mx-auto" />
             <div className="font-semibold text-white">No knowledge documents found</div>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Create your team's first operational runbook to index it for automated incident resolution.
+              Create an operational runbook or ingest documentation from external URLs.
             </p>
           </div>
         ) : (
@@ -395,6 +400,11 @@ Describe the purpose of this SOP and the architecture components involved.
                     <span className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">
                       {doc.title}
                     </span>
+                    {doc.sourceUrl && (
+                      <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                        <Globe className="h-3 w-3" /> {doc.sourceUrl}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-4 text-xs text-slate-400">
@@ -444,10 +454,12 @@ Describe the purpose of this SOP and the architecture components involved.
 
             <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-indigo-400" />
-              Create SOP / Runbook
+              {sourceType === 'URL' ? 'Ingest External Documentation URL' : 'Create SOP / Runbook'}
             </h2>
             <p className="text-sm text-slate-400 mb-6">
-              Write standard operating procedures. SopON will automatically chunk and generate 1536-dim vector embeddings.
+              {sourceType === 'URL'
+                ? 'Provide an external documentation URL. SopON will fetch the webpage, extract clean text, chunk into 500-token sections, and generate vector embeddings.'
+                : 'Write standard operating procedures. SopON will automatically chunk and generate 1536-dim vector embeddings.'}
             </p>
 
             {modalError && (
@@ -457,20 +469,6 @@ Describe the purpose of this SOP and the architecture components involved.
             )}
 
             <form onSubmit={handleCreateDocument} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Document Title
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Payment Gateway Redis Connection Pool Runbook"
-                  className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
@@ -482,9 +480,9 @@ Describe the purpose of this SOP and the architecture components involved.
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="RUNBOOK">Runbook</option>
+                    <option value="URL">External URL (Webpage Ingestion)</option>
                     <option value="POSTMORTEM">Postmortem</option>
                     <option value="DOCUMENT">Standard Document</option>
-                    <option value="URL">External URL</option>
                   </select>
                 </div>
 
@@ -507,28 +505,85 @@ Describe the purpose of this SOP and the architecture components involved.
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Markdown Content & Remediation Steps
-                  </label>
-                  <button
-                    type="button"
-                    onClick={insertTemplate}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
-                  >
-                    Insert Runbook Template
-                  </button>
+              {sourceType === 'URL' ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Webpage URL <span className="text-rose-400">*</span>
+                    </label>
+                    <div className="relative">
+                      <Globe className="h-4 w-4 absolute left-3.5 top-3 text-slate-500" />
+                      <input
+                        type="url"
+                        required
+                        value={sourceUrl}
+                        onChange={(e) => setSourceUrl(e.target.value)}
+                        placeholder="https://redis.io/docs/latest/develop/clients/pools-and-muxing/"
+                        className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Document Title (Optional - auto-extracted from webpage)
+                    </label>
+                    <input
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Redis Connection Pooling Documentation"
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs flex items-start gap-2.5">
+                    <Sparkles className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <span>
+                      SopON will fetch the live URL, strip navigation and scripts, extract documentation text and code blocks, slice into semantic chunks, and generate 1536-dimensional vector embeddings for RAG retrieval.
+                    </span>
+                  </div>
                 </div>
-                <textarea
-                  required
-                  rows={10}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="# Runbook Title&#10;&#10;## Diagnostic Symptoms&#10;- Symptom 1&#10;&#10;## Remediation Steps&#10;1. Step 1..."
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Document Title
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="Payment Gateway Redis Connection Pool Runbook"
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Markdown Content & Remediation Steps
+                      </label>
+                      <button
+                        type="button"
+                        onClick={insertTemplate}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+                      >
+                        Insert Runbook Template
+                      </button>
+                    </div>
+                    <textarea
+                      required
+                      rows={10}
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      placeholder="# Runbook Title&#10;&#10;## Diagnostic Symptoms&#10;- Symptom 1&#10;&#10;## Remediation Steps&#10;1. Step 1..."
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-3 mt-6">
                 <button
@@ -544,7 +599,7 @@ Describe the purpose of this SOP and the architecture components involved.
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-600/20"
                 >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Save & Index Document
+                  {sourceType === 'URL' ? 'Fetch & Index URL' : 'Save & Index Document'}
                 </button>
               </div>
             </form>

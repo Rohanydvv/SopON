@@ -9,20 +9,37 @@ export const DocumentSourceTypeSchema = z.enum([
 
 export type DocumentSourceType = z.infer<typeof DocumentSourceTypeSchema>;
 
-export const CreateDocumentRequestSchema = z.object({
-  title: z.string().min(3, 'Title must be at least 3 characters').max(255),
-  content: z.string().min(10, 'Document content must be at least 10 characters'),
-  sourceType: DocumentSourceTypeSchema.default('RUNBOOK'),
-  sourceUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
-  serviceId: z.string().uuid().optional().or(z.literal('')),
-  tags: z.array(z.string()).optional(),
-});
+export const CreateDocumentRequestSchema = z
+  .object({
+    title: z.string().min(2, 'Title must be at least 2 characters').max(255),
+    content: z.string().optional(),
+    sourceType: DocumentSourceTypeSchema.default('RUNBOOK'),
+    sourceUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+    serviceId: z.string().uuid().optional().or(z.literal('')),
+    tags: z.array(z.string()).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.sourceType === 'URL') {
+        return (
+          (typeof data.sourceUrl === 'string' && data.sourceUrl.length > 0) ||
+          (typeof data.content === 'string' &&
+            (data.content.startsWith('http://') || data.content.startsWith('https://')))
+        );
+      }
+      return typeof data.content === 'string' && data.content.trim().length >= 10;
+    },
+    {
+      message: 'Either valid content (at least 10 characters) or a valid URL must be provided',
+      path: ['content'],
+    },
+  );
 
 export type CreateDocumentRequest = z.infer<typeof CreateDocumentRequestSchema>;
 
 export const UpdateDocumentRequestSchema = z.object({
-  title: z.string().min(3).max(255).optional(),
-  content: z.string().min(10).optional(),
+  title: z.string().min(2).max(255).optional(),
+  content: z.string().optional(),
   sourceType: DocumentSourceTypeSchema.optional(),
   sourceUrl: z.string().url().optional().or(z.literal('')),
   serviceId: z.string().uuid().optional().nullable(),
