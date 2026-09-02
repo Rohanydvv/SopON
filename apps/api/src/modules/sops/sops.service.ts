@@ -104,7 +104,7 @@ export class SopsService {
     await prisma.auditLog.create({
       data: {
         organizationId: orgId,
-        actorUserId,
+        actorUserId: (actorUserId && actorUserId.length > 10 && actorUserId !== 'system') ? actorUserId : null,
         action: 'SOP_DOCUMENT_CREATE',
         entityType: 'KnowledgeDocument',
         entityId: doc.id,
@@ -257,7 +257,7 @@ export class SopsService {
     await prisma.auditLog.create({
       data: {
         organizationId: orgId,
-        actorUserId,
+        actorUserId: (actorUserId && actorUserId.length > 10 && actorUserId !== 'system') ? actorUserId : null,
         action: 'SOP_DOCUMENT_UPDATE',
         entityType: 'KnowledgeDocument',
         entityId: documentId,
@@ -295,7 +295,7 @@ export class SopsService {
     await prisma.auditLog.create({
       data: {
         organizationId: orgId,
-        actorUserId,
+        actorUserId: (actorUserId && actorUserId.length > 10 && actorUserId !== 'system') ? actorUserId : null,
         action: 'SOP_DOCUMENT_DELETE',
         entityType: 'KnowledgeDocument',
         entityId: documentId,

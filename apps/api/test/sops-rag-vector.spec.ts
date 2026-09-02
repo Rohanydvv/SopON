@@ -224,7 +224,7 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
     });
   });
 
-  describe('4. External URL Webpage Ingestion & Content RAG Retrieval', () => {
+  describe('4. External URL Webpage Ingestion & Semantic Ranking Quality', () => {
     it('should fetch external webpage, extract actual content, chunk it, and index for RAG', async () => {
       const res = await app.inject({
         method: 'POST',
@@ -243,23 +243,41 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
       expect(json.data.chunkCount).toBeGreaterThanOrEqual(2);
       expect(json.data.content).toContain('Connection pools and multiplexing');
       expect(json.data.content).not.toBe('https://redis.io/docs/latest/develop/clients/pools-and-muxing/');
+    });
 
-      // Perform RAG search for specific documentation terms
+    it('should rank Redis Connection Pooling Documentation #1 for multiplexing query', async () => {
       const searchRes = await app.inject({
         method: 'POST',
         url: `/api/v1/organizations/${userAOrgId}/rag/search`,
         headers: { authorization: `Bearer ${userAToken}` },
         payload: {
-          query: 'connection pooling multiplexing Redis',
-          topK: 3,
+          query: 'How does connection multiplexing work?',
+          topK: 5,
         },
       });
 
       expect(searchRes.statusCode).toBe(201);
       const searchJson = JSON.parse(searchRes.body);
       expect(searchJson.data.length).toBeGreaterThanOrEqual(1);
-      expect(searchJson.data[0].content).toContain('Connection pools and multiplexing');
-      expect(searchJson.data[0].content.length).toBeGreaterThan(100);
+      expect(searchJson.data[0].documentTitle).toBe('Redis Connection Pooling Documentation');
+      expect(searchJson.data[0].content).toContain('multiplexing');
+    });
+
+    it('should rank Redis Connection Pooling Documentation #1 for Redis connection pool query', async () => {
+      const searchRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/rag/search`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          query: 'How does Redis connection pooling work?',
+          topK: 5,
+        },
+      });
+
+      expect(searchRes.statusCode).toBe(201);
+      const searchJson = JSON.parse(searchRes.body);
+      expect(searchJson.data.length).toBeGreaterThanOrEqual(1);
+      expect(searchJson.data[0].documentTitle).toBe('Redis Connection Pooling Documentation');
     });
   });
 });
