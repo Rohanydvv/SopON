@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -17,6 +19,9 @@ import {
   DocumentDetailResponse,
   DocumentResponse,
   DocumentSourceType,
+  RagAnswerRequest,
+  RagAnswerRequestSchema,
+  RagAnswerResponse,
   RagSearchRequest,
   RagSearchRequestSchema,
   RagSearchResultResponse,
@@ -105,6 +110,7 @@ export class SopsController {
   }
 
   @Post('rag/search')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Perform semantic RAG vector search across SOP chunks' })
   async ragSearch(
     @Param('orgId') orgId: string,
@@ -117,6 +123,16 @@ export class SopsController {
       body.minScore,
       body.serviceId,
     );
+  }
+
+  @Post('rag/answer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate grounded AI natural language answer with cited sources' })
+  async ragAnswer(
+    @Param('orgId') orgId: string,
+    @Body(new ZodValidationPipe(RagAnswerRequestSchema)) body: RagAnswerRequest,
+  ): Promise<RagAnswerResponse> {
+    return this.sopsService.ragAnswer(orgId, body);
   }
 
   @Get('incidents/:incidentId/recommended-sops')

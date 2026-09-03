@@ -77,9 +77,32 @@ export interface RagSearchResultResponse {
   documentId: string;
   documentTitle: string;
   sourceType: DocumentSourceType;
+  sourceUrl?: string | null;
   chunkId: string;
   content: string;
   similarityScore: number;
+}
+
+export const RagAnswerRequestSchema = z.object({
+  question: z.string().min(2, 'Question must be at least 2 characters'),
+  topK: z.number().int().min(1).max(10).default(5),
+  minScore: z.number().min(0).max(1).default(0.15),
+  serviceId: z.string().uuid().optional().or(z.literal('')),
+});
+
+export type RagAnswerRequest = z.infer<typeof RagAnswerRequestSchema>;
+
+export interface RagAnswerResponse {
+  question: string;
+  answer: string;
+  hasContext: boolean;
+  sources: Array<{
+    documentId: string;
+    documentTitle: string;
+    sourceType: DocumentSourceType;
+    sourceUrl?: string | null;
+  }>;
+  supportingChunks: RagSearchResultResponse[];
 }
 
 export interface RecommendedSopResponse {

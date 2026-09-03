@@ -8,6 +8,7 @@ import {
   CreateDocumentRequest,
   DocumentResponse,
   DocumentSourceType,
+  RagAnswerResponse,
   RagSearchResultResponse,
   ServiceResponse,
   UserRole,
@@ -27,6 +28,9 @@ import {
   Globe,
   CheckCircle2,
   ExternalLink,
+  Bot,
+  HelpCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 export default function SopsPage() {
@@ -40,10 +44,10 @@ export default function SopsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('ALL');
 
-  // Semantic RAG Tester State
-  const [ragQuery, setRagQuery] = useState('');
-  const [ragResults, setRagResults] = useState<RagSearchResultResponse[] | null>(null);
-  const [isSearchingRag, setIsSearchingRag] = useState(false);
+  // AI RAG Question Answering State
+  const [ragQuestion, setRagQuestion] = useState('');
+  const [ragAnswerResult, setRagAnswerResult] = useState<RagAnswerResponse | null>(null);
+  const [isAskingAi, setIsAskingAi] = useState(false);
 
   // Create SOP Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -132,31 +136,31 @@ export default function SopsPage() {
     }
   };
 
-  const handleRagSearch = async (e: React.FormEvent) => {
+  const handleAskAi = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeOrg || !token || !ragQuery.trim()) return;
-    setIsSearchingRag(true);
+    if (!activeOrg || !token || !ragQuestion.trim()) return;
+    setIsAskingAi(true);
 
     try {
-      const res = await fetchApi<RagSearchResultResponse[]>(
-        `/v1/organizations/${activeOrg.organizationId}/rag/search`,
+      const res = await fetchApi<RagAnswerResponse>(
+        `/v1/organizations/${activeOrg.organizationId}/rag/answer`,
         {
           method: 'POST',
           body: JSON.stringify({
-            query: ragQuery.trim(),
-            topK: 4,
+            question: ragQuestion.trim(),
+            topK: 5,
           }),
         },
         token,
       );
 
-      setRagResults(res.data);
+      setRagAnswerResult(res.data);
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null && 'message' in err) {
         alert(String(err.message));
       }
     } finally {
-      setIsSearchingRag(false);
+      setIsAskingAi(false);
     }
   };
 
@@ -260,82 +264,131 @@ Describe the purpose of this SOP and the architecture components involved.
         </div>
       )}
 
-      {/* Semantic RAG Vector Search Tester */}
-      <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl space-y-4">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-indigo-400" />
-          <h2 className="text-base font-bold text-white">Semantic RAG Vector Search</h2>
-          <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded font-mono">
-            pgvector 1536-dim
+      {/* AI Grounded Knowledge Assistant & RAG Q&A */}
+      <div className="p-6 bg-slate-900 border border-indigo-500/30 rounded-2xl shadow-xl space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot className="h-5 w-5 text-indigo-400" />
+            <h2 className="text-base font-bold text-white">AI Knowledge Assistant</h2>
+            <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded font-mono">
+              RAG Grounded Q&A
+            </span>
+          </div>
+          <span className="text-xs text-slate-400 hidden sm:inline">
+            Answers are generated strictly from your ingested SOPs & documentation.
           </span>
         </div>
-        <p className="text-xs text-slate-400">
-          Test similarity matching across all chunked SOPs and external documentation in your organization. Query natural language incident symptoms or errors.
-        </p>
 
-        <form onSubmit={handleRagSearch} className="flex gap-2">
+        <form onSubmit={handleAskAi} className="flex gap-2">
           <div className="relative flex-1">
-            <Search className="h-4 w-4 absolute left-3.5 top-3 text-slate-500" />
+            <HelpCircle className="h-4 w-4 absolute left-3.5 top-3 text-slate-500" />
             <input
               type="text"
-              value={ragQuery}
-              onChange={(e) => setRagQuery(e.target.value)}
-              placeholder="e.g. connection pooling multiplexing Redis or connection timeout..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={ragQuestion}
+              onChange={(e) => setRagQuestion(e.target.value)}
+              placeholder="Ask a technical question (e.g. How does connection multiplexing work? or How to restart Redis?)"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-500"
             />
           </div>
           <button
             type="submit"
-            disabled={isSearchingRag || !ragQuery.trim()}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            disabled={isAskingAi || !ragQuestion.trim()}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-600/20 shrink-0"
           >
-            {isSearchingRag ? (
+            {isAskingAi ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            Search Vector Index
+            Ask AI
           </button>
         </form>
 
-        {/* RAG Results Preview */}
-        {ragResults && (
-          <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Matching Chunks Found: {ragResults.length}</span>
+        {/* AI Answer & Source Attribution Card */}
+        {ragAnswerResult && (
+          <div className="mt-4 pt-5 border-t border-slate-800 space-y-4 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" /> AI Answer
+              </span>
               <button
-                onClick={() => setRagResults(null)}
-                className="text-slate-500 hover:text-white"
+                onClick={() => setRagAnswerResult(null)}
+                className="text-xs text-slate-500 hover:text-white"
               >
-                Clear Results
+                Clear Answer
               </button>
             </div>
 
-            {ragResults.length === 0 ? (
-              <div className="text-center py-4 text-xs text-slate-500">
-                No matching SOP chunks found with sufficient similarity.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ragResults.map((r) => (
-                  <Link
-                    key={r.chunkId}
-                    href={`/app/sops/${r.documentId}`}
-                    className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/40 transition-all space-y-2 group"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-white group-hover:text-indigo-400">
-                        {r.documentTitle}
-                      </span>
-                      <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                        {Math.round(r.similarityScore * 100)}% Match
-                      </span>
+            {/* Answer Box */}
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800/90 space-y-3">
+              <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-wrap font-sans">
+                {ragAnswerResult.answer}
+              </p>
+
+              {/* Sources List */}
+              {ragAnswerResult.sources.length > 0 && (
+                <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium">Source:</span>
+                  {ragAnswerResult.sources.map((s) => (
+                    <div
+                      key={s.documentId}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700/80 text-xs text-slate-200"
+                    >
+                      {s.sourceType === 'URL' ? (
+                        <Globe className="h-3 w-3 text-emerald-400" />
+                      ) : (
+                        <BookOpen className="h-3 w-3 text-indigo-400" />
+                      )}
+                      <Link
+                        href={`/app/sops/${s.documentId}`}
+                        className="font-semibold hover:text-indigo-400 transition-colors"
+                      >
+                        {s.documentTitle}
+                      </Link>
+                      {s.sourceUrl && (
+                        <a
+                          href={s.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-400 hover:text-emerald-300 ml-1"
+                          title="Open Original External URL"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
                     </div>
-                    <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed font-mono">
-                      {r.content}
-                    </p>
-                  </Link>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Supporting Evidence Chunks */}
+            {ragAnswerResult.supportingChunks.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Supporting Retrieved Evidence ({ragAnswerResult.supportingChunks.length} Chunks)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {ragAnswerResult.supportingChunks.map((r) => (
+                    <Link
+                      key={r.chunkId}
+                      href={`/app/sops/${r.documentId}`}
+                      className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/40 transition-all space-y-2 group"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-white group-hover:text-indigo-400 truncate max-w-[220px]">
+                          {r.documentTitle}
+                        </span>
+                        <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold shrink-0">
+                          {Math.round(r.similarityScore * 100)}% Match
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed font-mono">
+                        {r.content}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -352,9 +405,9 @@ Describe the purpose of this SOP and the architecture components involved.
           >
             <option value="ALL">All Document Types</option>
             <option value="RUNBOOK">Runbooks</option>
+            <option value="URL">External URL</option>
             <option value="POSTMORTEM">Postmortems</option>
             <option value="DOCUMENT">Standard Documents</option>
-            <option value="URL">External URL</option>
           </select>
         </div>
 
@@ -395,7 +448,7 @@ Describe the purpose of this SOP and the architecture components involved.
                   href={`/app/sops/${doc.id}`}
                   className="space-y-1.5 flex-1 block"
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     {sourceTypeBadge(doc.sourceType)}
                     <span className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">
                       {doc.title}

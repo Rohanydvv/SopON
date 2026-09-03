@@ -158,7 +158,7 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
         },
       });
 
-      expect(res.statusCode).toBe(201);
+      expect(res.statusCode).toBe(200);
       const json = JSON.parse(res.body);
       expect(json.data.length).toBeGreaterThanOrEqual(1);
       expect(json.data[0].documentTitle).toContain('Payment Gateway Redis');
@@ -218,13 +218,13 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
         },
       });
 
-      expect(res.statusCode).toBe(201);
+      expect(res.statusCode).toBe(200);
       const json = JSON.parse(res.body);
       expect(json.data.length).toBe(0);
     });
   });
 
-  describe('4. External URL Webpage Ingestion & Semantic Ranking Quality', () => {
+  describe('4. External URL Webpage Ingestion & AI Grounded Question Answering', () => {
     it('should fetch external webpage, extract actual content, chunk it, and index for RAG', async () => {
       const res = await app.inject({
         method: 'POST',
@@ -245,39 +245,58 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
       expect(json.data.content).not.toBe('https://redis.io/docs/latest/develop/clients/pools-and-muxing/');
     });
 
-    it('should rank Redis Connection Pooling Documentation #1 for multiplexing query', async () => {
-      const searchRes = await app.inject({
+    it('should answer "How does connection multiplexing work?" using Redis documentation as primary source', async () => {
+      const answerRes = await app.inject({
         method: 'POST',
-        url: `/api/v1/organizations/${userAOrgId}/rag/search`,
+        url: `/api/v1/organizations/${userAOrgId}/rag/answer`,
         headers: { authorization: `Bearer ${userAToken}` },
         payload: {
-          query: 'How does connection multiplexing work?',
-          topK: 5,
+          question: 'How does connection multiplexing work?',
         },
       });
 
-      expect(searchRes.statusCode).toBe(201);
-      const searchJson = JSON.parse(searchRes.body);
-      expect(searchJson.data.length).toBeGreaterThanOrEqual(1);
-      expect(searchJson.data[0].documentTitle).toBe('Redis Connection Pooling Documentation');
-      expect(searchJson.data[0].content).toContain('multiplexing');
+      expect(answerRes.statusCode).toBe(200);
+      const answerJson = JSON.parse(answerRes.body);
+      expect(answerJson.data.hasContext).toBe(true);
+      expect(answerJson.data.sources.length).toBeGreaterThanOrEqual(1);
+      expect(answerJson.data.sources[0].documentTitle).toBe('Redis Connection Pooling Documentation');
+      expect(answerJson.data.sources[0].sourceUrl).toBe('https://redis.io/docs/latest/develop/clients/pools-and-muxing/');
+      expect(answerJson.data.answer.toLowerCase()).toContain('multiplex');
+      expect(answerJson.data.supportingChunks.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('should rank Redis Connection Pooling Documentation #1 for Redis connection pool query', async () => {
-      const searchRes = await app.inject({
+    it('should answer "How does Redis connection pooling work?" grounded in Redis documentation', async () => {
+      const answerRes = await app.inject({
         method: 'POST',
-        url: `/api/v1/organizations/${userAOrgId}/rag/search`,
+        url: `/api/v1/organizations/${userAOrgId}/rag/answer`,
         headers: { authorization: `Bearer ${userAToken}` },
         payload: {
-          query: 'How does Redis connection pooling work?',
-          topK: 5,
+          question: 'How does Redis connection pooling work?',
         },
       });
 
-      expect(searchRes.statusCode).toBe(201);
-      const searchJson = JSON.parse(searchRes.body);
-      expect(searchJson.data.length).toBeGreaterThanOrEqual(1);
-      expect(searchJson.data[0].documentTitle).toBe('Redis Connection Pooling Documentation');
+      expect(answerRes.statusCode).toBe(200);
+      const answerJson = JSON.parse(answerRes.body);
+      expect(answerJson.data.hasContext).toBe(true);
+      expect(answerJson.data.sources[0].documentTitle).toBe('Redis Connection Pooling Documentation');
+      expect(answerJson.data.answer.toLowerCase()).toContain('pool');
+    });
+
+    it('should refuse to answer out-of-context questions without hallucinating', async () => {
+      const answerRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/rag/answer`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          question: 'What is the weather in Tokyo today?',
+        },
+      });
+
+      expect(answerRes.statusCode).toBe(200);
+      const answerJson = JSON.parse(answerRes.body);
+      expect(answerJson.data.hasContext).toBe(false);
+      expect(answerJson.data.sources.length).toBe(0);
+      expect(answerJson.data.answer).toContain('do not have enough relevant documentation');
     });
   });
 });

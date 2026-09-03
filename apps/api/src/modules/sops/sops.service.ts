@@ -10,6 +10,8 @@ import {
   DocumentResponse,
   DocumentSourceType,
   ErrorCodes,
+  RagAnswerRequest,
+  RagAnswerResponse,
   RagSearchResultResponse,
   RecommendedSopResponse,
   UpdateDocumentRequest,
@@ -20,6 +22,7 @@ import {
   formatVectorForPg,
   generateEmbedding,
   generateEmbeddings,
+  generateGroundedAnswer,
   splitDocumentIntoChunks,
 } from '@sopon/ai';
 
@@ -318,7 +321,7 @@ export class SopsService {
     try {
       // Attempt pgvector native distance operator
       let sql = `
-        SELECT c.id as "chunkId", c."documentId", c.content, d.title as "documentTitle", d."sourceType",
+        SELECT c.id as "chunkId", c."documentId", c.content, d.title as "documentTitle", d."sourceType", d."sourceUrl",
                (1 - (c.embedding <=> '${formattedVector}'::vector)) as "similarityScore"
         FROM knowledge_chunks c
         JOIN knowledge_documents d ON d.id = c."documentId"
@@ -342,6 +345,7 @@ export class SopsService {
           content: string;
           documentTitle: string;
           sourceType: string;
+          sourceUrl?: string | null;
           similarityScore: number | string;
         }>
       >(sql);
@@ -353,6 +357,7 @@ export class SopsService {
             documentId: r.documentId,
             documentTitle: r.documentTitle,
             sourceType: r.sourceType as DocumentSourceType,
+            sourceUrl: r.sourceUrl,
             content: r.content,
             similarityScore: Number(r.similarityScore) || 0,
           }))
@@ -387,6 +392,7 @@ export class SopsService {
         documentId: chunk.documentId,
         documentTitle: chunk.document.title,
         sourceType: chunk.document.sourceType as DocumentSourceType,
+        sourceUrl: chunk.document.sourceUrl,
         content: chunk.content,
         similarityScore: Math.max(0, score),
       };
@@ -394,6 +400,35 @@ export class SopsService {
 
     scored.sort((a, b) => b.similarityScore - a.similarityScore);
     return scored.filter((s) => s.similarityScore >= minScore).slice(0, topK);
+  }
+
+  async ragAnswer(orgId: string, data: RagAnswerRequest): Promise<RagAnswerResponse> {
+    const searchResults = await this.ragSearch(
+      orgId,
+      data.question,
+      data.topK || 5,
+      data.minScore || 0.15,
+      data.serviceId,
+    );
+
+    const generated = await generateGroundedAnswer(
+      data.question,
+      searchResults,
+      { minScoreThreshold: data.minScore || 0.15 },
+    );
+
+    return {
+      question: data.question,
+      answer: generated.answer,
+      hasContext: generated.hasContext,
+      sources: generated.citedSources.map((s) => ({
+        documentId: s.documentId,
+        documentTitle: s.documentTitle,
+        sourceType: s.sourceType as DocumentSourceType,
+        sourceUrl: s.sourceUrl,
+      })),
+      supportingChunks: searchResults,
+    };
   }
 
   async getRecommendedSopsForIncident(
