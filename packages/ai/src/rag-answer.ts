@@ -35,7 +35,7 @@ export async function generateGroundedAnswer(
   chunks: RetrievedContextChunk[],
   options: { minScoreThreshold?: number } = {},
 ): Promise<GeneratedAnswerResult> {
-  const minScore = options.minScoreThreshold ?? 0.20;
+  const minScore = options.minScoreThreshold ?? 0.15;
   const topChunk = chunks[0];
 
   // Extract meaningful query keywords
@@ -59,26 +59,10 @@ export async function generateGroundedAnswer(
     };
   }
 
-  // Filter relevant chunks
-  const relevantChunks = chunks.filter((c) => c.similarityScore >= minScore);
-
-  // Extract unique cited sources
-  const sourceMap = new Map<
-    string,
-    { documentId: string; documentTitle: string; sourceUrl?: string | null; sourceType: string }
-  >();
-
-  for (const chunk of relevantChunks) {
-    if (!sourceMap.has(chunk.documentId)) {
-      sourceMap.set(chunk.documentId, {
-        documentId: chunk.documentId,
-        documentTitle: chunk.documentTitle,
-        sourceUrl: chunk.sourceUrl || null,
-        sourceType: chunk.sourceType,
-      });
-    }
-  }
-  const citedSources = Array.from(sourceMap.values());
+  // 1. Dynamic Relative Context Pruning (topScore * 0.75 threshold)
+  // Prunes distant/generic noise documents when high-confidence technical docs exist.
+  const relativeCutoff = Math.max(minScore, topChunk.similarityScore * 0.75);
+  const relevantChunks = chunks.filter((c) => c.similarityScore >= relativeCutoff);
 
   const openaiKey = process.env.OPENAI_API_KEY;
 
@@ -87,7 +71,7 @@ export async function generateGroundedAnswer(
       const contextText = relevantChunks
         .map(
           (c, idx) =>
-            `[Context ${idx + 1} - Source: "${c.documentTitle}" (${c.sourceUrl || c.sourceType})]\n${c.content}`,
+            `[Context ${idx + 1} - Document: "${c.documentTitle}" (ID: ${c.documentId}, Source: ${c.sourceUrl || c.sourceType})]\n${c.content}`,
         )
         .join('\n\n---\n\n');
 
@@ -129,10 +113,22 @@ CONCISE GROUNDED ANSWER:`;
         };
         const text = data.choices?.[0]?.message?.content?.trim();
         if (text) {
+          // Extract sources from relevantChunks that contributed
+          const sourceMap = new Map<string, { documentId: string; documentTitle: string; sourceUrl?: string | null; sourceType: string }>();
+          for (const chunk of relevantChunks) {
+            if (!sourceMap.has(chunk.documentId)) {
+              sourceMap.set(chunk.documentId, {
+                documentId: chunk.documentId,
+                documentTitle: chunk.documentTitle,
+                sourceUrl: chunk.sourceUrl || null,
+                sourceType: chunk.sourceType,
+              });
+            }
+          }
           return {
             answer: text,
             hasContext: true,
-            citedSources,
+            citedSources: Array.from(sourceMap.values()),
           };
         }
       }
@@ -141,81 +137,150 @@ CONCISE GROUNDED ANSWER:`;
     }
   }
 
-  // Local Grounded Synthesizer (for offline / test environments)
-  const localAnswer = synthesizeLocalGroundedAnswer(question, relevantChunks);
+  // 2. Coherent Grounded Synthesis & Strict Source Attribution (Local Synthesizer)
+  const synthesis = synthesizeLocalGroundedAnswer(question, relevantChunks);
   return {
-    answer: localAnswer,
+    answer: synthesis.answer,
     hasContext: true,
-    citedSources,
+    citedSources: synthesis.citedSources,
   };
+}
+
+interface SynthesizedAnswerOutput {
+  answer: string;
+  citedSources: Array<{
+    documentId: string;
+    documentTitle: string;
+    sourceUrl?: string | null;
+    sourceType: string;
+  }>;
 }
 
 /**
  * Deterministic local grounded synthesizer for offline / test environments.
- * Extracts and formats the most relevant technical sentences from the retrieved chunks.
+ * Extracts complete, well-formed technical sentences from the retrieved chunks
+ * and tracks the exact source documents that contributed to the answer.
  */
 function synthesizeLocalGroundedAnswer(
   question: string,
   chunks: RetrievedContextChunk[],
-): string {
+): SynthesizedAnswerOutput {
   const topChunk = chunks[0];
-  if (!topChunk) return 'No context available.';
+  if (!topChunk) {
+    return {
+      answer: 'No context available.',
+      citedSources: [],
+    };
+  }
 
   const qLower = question.toLowerCase();
   const isMultiplexingQ = qLower.includes('multiplex');
   const isPoolingQ = qLower.includes('pool');
 
-  // Collect candidate sentences across top chunks
-  const candidateSentences: string[] = [];
-  for (const chunk of chunks.slice(0, 3)) {
-    // Normalize lines
-    const rawLines = chunk.content
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 20 && !l.startsWith('[Source URL:') && !l.startsWith('RATE THIS'));
+  interface CandidateSentence {
+    text: string;
+    score: number;
+    chunk: RetrievedContextChunk;
+  }
 
-    for (const line of rawLines) {
-      const sentences = line.split(/(?<=[.?!])\s+/);
-      for (const s of sentences) {
-        const clean = s.trim();
-        if (clean.length > 20 && !candidateSentences.includes(clean)) {
-          candidateSentences.push(clean);
+  const candidates: CandidateSentence[] = [];
+
+  for (const chunk of chunks) {
+    const rawParagraphs = chunk.content
+      .split(/\n\n+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 20 && !p.startsWith('[Source URL:') && !p.startsWith('RATE THIS'));
+
+    for (const para of rawParagraphs) {
+      // Normalize linebreaks and backticks
+      const cleanPara = para
+        .replace(/\n+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/^#+\s+/g, '')
+        .trim();
+
+      // Split into complete sentences
+      const sentences = cleanPara.match(/[^.!?]+[.!?]+/g) || [cleanPara];
+
+      for (const rawSentence of sentences) {
+        let sentence = rawSentence.trim();
+        // Remove markdown backticks around names while keeping content (e.g. `StackExchange.Redis` -> StackExchange.Redis)
+        sentence = sentence.replace(/`([^`]+)`/g, '$1');
+
+        if (sentence.length < 25) continue;
+        if (sentence.startsWith('[') || sentence.startsWith('#') || sentence.startsWith('★')) continue;
+
+        const sLower = sentence.toLowerCase();
+        let score = 0;
+
+        if (isMultiplexingQ && sLower.includes('multiplex')) score += 8;
+        if (isPoolingQ && sLower.includes('pool')) score += 8;
+        if (sLower.includes('connection')) score += 2;
+        if (sLower.includes('client')) score += 2;
+        if (sLower.includes('redis')) score += 2;
+        if (sLower.includes('pipelin') || sLower.includes('command') || sLower.includes('socket')) score += 2;
+        if (sLower.includes('borrow') || sLower.includes('return') || sLower.includes('reuse')) score += 2;
+
+        if (score > 0) {
+          candidates.push({ text: sentence, score, chunk });
         }
       }
     }
   }
 
-  // Score sentences based on query keyword overlap
-  const scoredSentences = candidateSentences.map((sentence) => {
-    const sLower = sentence.toLowerCase();
-    let score = 0;
+  // Sort candidate sentences by relevance score
+  candidates.sort((a, b) => b.score - a.score);
 
-    if (isMultiplexingQ && sLower.includes('multiplex')) score += 6;
-    if (isPoolingQ && sLower.includes('pool')) score += 6;
-    if (sLower.includes('connection')) score += 2;
-    if (sLower.includes('client')) score += 2;
-    if (sLower.includes('redis')) score += 2;
-    if (sLower.includes('command') || sLower.includes('pipelin') || sLower.includes('thread')) score += 1.5;
+  // Pick top non-redundant sentences
+  const selectedSentences: CandidateSentence[] = [];
+  const usedTexts = new Set<string>();
 
-    return { sentence, score };
-  });
-
-  scoredSentences.sort((a, b) => b.score - a.score);
-  const bestSentences = scoredSentences
-    .filter((s) => s.score > 3)
-    .slice(0, 4)
-    .map((s) => s.sentence);
-
-  if (bestSentences.length > 0) {
-    return bestSentences.join(' ');
+  for (const cand of candidates) {
+    if (usedTexts.has(cand.text)) continue;
+    if (selectedSentences.length >= 3) break;
+    selectedSentences.push(cand);
+    usedTexts.add(cand.text);
   }
 
-  // Clean fallback from top chunk content
-  const fallback = topChunk.content
-    .split('\n')
-    .filter((l) => l.trim().length > 20 && !l.startsWith('[Source URL:') && !l.startsWith('#'))
-    .slice(0, 3)
-    .join(' ');
+  // If candidate sentences found, assemble answer and extract genuine sources
+  if (selectedSentences.length > 0) {
+    const answerText = selectedSentences.map((s) => s.text).join(' ');
 
-  return fallback || topChunk.content.slice(0, 250);
+    const sourceMap = new Map<string, { documentId: string; documentTitle: string; sourceUrl?: string | null; sourceType: string }>();
+    for (const item of selectedSentences) {
+      if (!sourceMap.has(item.chunk.documentId)) {
+        sourceMap.set(item.chunk.documentId, {
+          documentId: item.chunk.documentId,
+          documentTitle: item.chunk.documentTitle,
+          sourceUrl: item.chunk.sourceUrl || null,
+          sourceType: item.chunk.sourceType,
+        });
+      }
+    }
+
+    return {
+      answer: answerText,
+      citedSources: Array.from(sourceMap.values()),
+    };
+  }
+
+  // Clean fallback from top chunk
+  const fallbackLines = topChunk.content
+    .split('\n')
+    .filter((l) => l.trim().length > 25 && !l.startsWith('[Source URL:') && !l.startsWith('#'))
+    .slice(0, 2)
+    .join(' ')
+    .replace(/`([^`]+)`/g, '$1');
+
+  return {
+    answer: fallbackLines || topChunk.content.slice(0, 250),
+    citedSources: [
+      {
+        documentId: topChunk.documentId,
+        documentTitle: topChunk.documentTitle,
+        sourceUrl: topChunk.sourceUrl || null,
+        sourceType: topChunk.sourceType,
+      },
+    ],
+  };
 }

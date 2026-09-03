@@ -258,9 +258,10 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
       expect(answerRes.statusCode).toBe(200);
       const answerJson = JSON.parse(answerRes.body);
       expect(answerJson.data.hasContext).toBe(true);
-      expect(answerJson.data.sources.length).toBeGreaterThanOrEqual(1);
+      expect(answerJson.data.sources.length).toBe(1);
       expect(answerJson.data.sources[0].documentTitle).toBe('Redis Connection Pooling Documentation');
       expect(answerJson.data.sources[0].sourceUrl).toBe('https://redis.io/docs/latest/develop/clients/pools-and-muxing/');
+      expect(answerJson.data.sources.every((s: { documentTitle: string }) => !s.documentTitle.includes('Payment Gateway Outage'))).toBe(true);
       expect(answerJson.data.answer.toLowerCase()).toContain('multiplex');
       expect(answerJson.data.supportingChunks.length).toBeGreaterThanOrEqual(1);
     });
@@ -279,6 +280,7 @@ This runbook guides on-call engineers when the Payment Gateway encounters high l
       const answerJson = JSON.parse(answerRes.body);
       expect(answerJson.data.hasContext).toBe(true);
       expect(answerJson.data.sources[0].documentTitle).toBe('Redis Connection Pooling Documentation');
+      expect(answerJson.data.sources.every((s: { documentTitle: string }) => !s.documentTitle.includes('Payment Gateway Outage'))).toBe(true);
       expect(answerJson.data.answer.toLowerCase()).toContain('pool');
     });
 
