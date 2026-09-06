@@ -4,3 +4,4 @@ export * from './embeddings';
 export * from './vector-search';
 export * from './html-fetcher';
 export * from './rag-answer';
+export * from './incident-investigator';

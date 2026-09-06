@@ -10,6 +10,7 @@ import { ServicesModule } from './modules/services/services.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { IncidentsModule } from './modules/incidents/incidents.module';
 import { SopsModule } from './modules/sops/sops.module';
+import { CopilotModule } from './modules/copilot/copilot.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SopsModule } from './modules/sops/sops.module';
     IntegrationsModule,
     IncidentsModule,
     SopsModule,
+    CopilotModule,
   ],
   providers: [
     {

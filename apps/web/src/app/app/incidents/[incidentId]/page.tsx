@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { fetchApi } from '@/lib/api';
 import {
   CreateTimelineEventRequest,
+  IncidentAnalysisResponse,
   IncidentPriority,
   IncidentResponse,
   IncidentSeverity,
@@ -34,6 +35,14 @@ import {
   BookOpen,
   CheckSquare,
   ExternalLink,
+  Bot,
+  ShieldCheck,
+  Terminal,
+  Cpu,
+  RefreshCw,
+  Sliders,
+  CheckCircle,
+  FileCheck,
 } from 'lucide-react';
 
 export default function IncidentWorkspacePage() {
@@ -45,8 +54,10 @@ export default function IncidentWorkspacePage() {
   const [incident, setIncident] = useState<IncidentResponse | null>(null);
   const [members, setMembers] = useState<MemberResponse[]>([]);
   const [recommendedSops, setRecommendedSops] = useState<RecommendedSopResponse[]>([]);
+  const [analysis, setAnalysis] = useState<IncidentAnalysisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSops, setIsLoadingSops] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Note composer state
@@ -76,8 +87,9 @@ export default function IncidentWorkspacePage() {
       setIncident(incRes.data);
       setMembers(membersRes.data);
 
-      // Load recommended SOPs
+      // Load recommended SOPs and Autonomous Analysis
       loadRecommendedSops();
+      loadAnalysis();
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null && 'message' in err) {
         setError(String(err.message));
@@ -104,6 +116,44 @@ export default function IncidentWorkspacePage() {
       // Non-blocking
     } finally {
       setIsLoadingSops(false);
+    }
+  };
+
+  const loadAnalysis = async () => {
+    if (!activeOrg || !token || !incidentId) return;
+
+    try {
+      const res = await fetchApi<IncidentAnalysisResponse>(
+        `/v1/organizations/${activeOrg.organizationId}/incidents/${incidentId}/analysis`,
+        {},
+        token,
+      );
+      if (res.data && res.data.understand) {
+        setAnalysis(res.data);
+      }
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  const triggerAutonomousInvestigation = async () => {
+    if (!activeOrg || !token || !incidentId) return;
+    setIsAnalyzing(true);
+
+    try {
+      const res = await fetchApi<IncidentAnalysisResponse>(
+        `/v1/organizations/${activeOrg.organizationId}/incidents/${incidentId}/analyze`,
+        { method: 'POST' },
+        token,
+      );
+      setAnalysis(res.data);
+      await loadIncidentData();
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'message' in err) {
+        alert(String(err.message));
+      }
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -243,6 +293,28 @@ export default function IncidentWorkspacePage() {
     );
   };
 
+  const riskTierBadge = (tier: string) => {
+    if (tier === 'SAFE_AUTOMATIC') {
+      return (
+        <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+          SAFE AUTOMATIC (ZERO TOUCH)
+        </span>
+      );
+    }
+    if (tier === 'REQUIRES_APPROVAL') {
+      return (
+        <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+          REQUIRES APPROVAL
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+        MANUAL ESCALATION
+      </span>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Back Link & Header */}
@@ -270,6 +342,19 @@ export default function IncidentWorkspacePage() {
 
           {/* Status Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={triggerAutonomousInvestigation}
+              disabled={isAnalyzing}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
+            >
+              {isAnalyzing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              Run Autonomous RCA
+            </button>
+
             {incident.status === IncidentStatus.OPEN && (
               <button
                 disabled={isUpdatingStatus}
@@ -324,6 +409,127 @@ export default function IncidentWorkspacePage() {
           </div>
         </div>
       </div>
+
+      {/* Autonomous AI Reasoning & RCA Command Card */}
+      {analysis && (
+        <div className="p-6 bg-slate-900 border border-indigo-500/40 rounded-2xl shadow-2xl space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <Bot className="h-6 w-6 text-indigo-400" />
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  Autonomous Operations Reasoning & RCA
+                </h2>
+                <span className="text-xs text-slate-400">
+                  7-Stage Pipeline: Understand → Investigate → Retrieve → Reason → Decide → Plan → Verify
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {riskTierBadge(analysis.decidePlan.riskTier)}
+              <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
+                Confidence: {Math.round(analysis.reasonRca.confidenceScore * 100)}% ({analysis.reasonRca.confidenceLevel})
+              </span>
+              {analysis.resolveEscalate.isReady ? (
+                <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" /> Autonomous Ready
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Supervised Escalation
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Root Cause Analysis Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Primary Root Cause & Evidence */}
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <Cpu className="h-4 w-4 text-indigo-400" /> Primary Root Cause Analysis
+              </div>
+
+              <div className="p-3.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-sm text-indigo-200 font-medium leading-relaxed">
+                {analysis.reasonRca.primaryRootCause}
+              </div>
+
+              {/* Contributing Factors */}
+              {analysis.reasonRca.contributingFactors.length > 0 && (
+                <div className="space-y-1.5 pt-2">
+                  <div className="text-xs font-semibold text-slate-400 uppercase">Contributing Factors:</div>
+                  {analysis.reasonRca.contributingFactors.map((factor, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                      <span className="text-indigo-400 font-mono">•</span>
+                      <span>{factor}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Evidence Chain */}
+              <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                <div className="text-xs font-semibold text-slate-400 uppercase">Multi-Source Evidence Chain:</div>
+                <div className="space-y-2">
+                  {analysis.reasonRca.evidenceChain.map((ev, idx) => (
+                    <div key={idx} className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white">{ev.signal}</span>
+                        <span className="text-slate-500 font-mono text-[11px]">{ev.source}</span>
+                      </div>
+                      <p className="text-slate-400 text-[11px]">{ev.observation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Structured Remediation Plan */}
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <Sliders className="h-4 w-4 text-emerald-400" /> Structured Remediation Plan
+              </div>
+
+              <div className="space-y-3">
+                {analysis.decidePlan.actions.map((act) => (
+                  <div key={act.actionId} className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                          STEP {act.order}: {act.actionType}
+                        </span>
+                        <span className="text-xs font-semibold text-white">{act.targetService}</span>
+                      </div>
+                      <span className="text-[11px] font-mono text-emerald-400">{act.riskLevel}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">{act.description}</p>
+                    {act.commandOrPayload && (
+                      <div className="p-2 rounded bg-slate-950 font-mono text-[11px] text-emerald-400 border border-slate-800 flex items-center gap-2">
+                        <Terminal className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                        <span className="truncate">{act.commandOrPayload}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Verification Probes */}
+              <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                <div className="text-xs font-semibold text-slate-400 uppercase flex items-center gap-1.5">
+                  <FileCheck className="h-3.5 w-3.5 text-emerald-400" /> Post-Execution Verification Probes:
+                </div>
+                {analysis.verify.postExecutionVerificationProbes.map((probe, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 text-xs">
+                    <span className="font-mono text-slate-300 text-[11px]">{probe.metricOrEndpoint}</span>
+                    <span className="text-emerald-400 font-mono text-[11px] font-semibold">{probe.expectedCondition}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace Split */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -414,7 +620,7 @@ export default function IncidentWorkspacePage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white">AI Recommended SOPs & Remediation</h3>
+                <h3 className="text-sm font-bold text-white">AI Recommended SOPs & Runbooks</h3>
               </div>
               <span className="text-[11px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded font-mono font-medium">
                 RAG Matched
@@ -458,7 +664,7 @@ export default function IncidentWorkspacePage() {
                     {sop.remediationSteps.length > 0 && (
                       <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
                         <div className="text-[11px] font-semibold text-slate-400 uppercase">
-                          Recommended Action Steps:
+                          Action Steps:
                         </div>
                         <div className="space-y-1">
                           {sop.remediationSteps.map((step, idx) => (
