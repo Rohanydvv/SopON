@@ -89,6 +89,12 @@ export class CopilotService {
       retrievedSops,
     });
 
+    let validActorId: string | null = null;
+    if (actorUserId && actorUserId.length > 20) {
+      const userExists = await prisma.user.findUnique({ where: { id: actorUserId } });
+      if (userExists) validActorId = userExists.id;
+    }
+
     // 4. Record investigation event on the incident timeline
     await prisma.incidentTimeline.create({
       data: {
@@ -96,7 +102,7 @@ export class CopilotService {
         eventType: 'INVESTIGATION_NOTE',
         message: `Autonomous AI Investigation completed. Primary Root Cause: ${analysis.reasonRca.primaryRootCause} (Confidence: ${Math.round(analysis.reasonRca.confidenceScore * 100)}%). Risk Tier: ${analysis.decidePlan.riskTier}.`,
         metadataJson: analysis as any,
-        actorUserId: (actorUserId && actorUserId.length > 10 && actorUserId !== 'system') ? actorUserId : null,
+        actorUserId: validActorId,
       },
     });
 
@@ -104,7 +110,7 @@ export class CopilotService {
     await prisma.auditLog.create({
       data: {
         organizationId: orgId,
-        actorUserId: (actorUserId && actorUserId.length > 10 && actorUserId !== 'system') ? actorUserId : null,
+        actorUserId: validActorId,
         action: 'AI_INCIDENT_ANALYSIS_COMPLETED',
         entityType: 'Incident',
         entityId: incidentId,
