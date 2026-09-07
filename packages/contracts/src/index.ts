@@ -10,3 +10,4 @@ export * from './incident.dto';
 export * from './integration.dto';
 export * from './sop.dto';
 export * from './copilot.dto';
+export * from './action.dto';

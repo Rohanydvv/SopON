@@ -11,6 +11,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { IncidentsModule } from './modules/incidents/incidents.module';
 import { SopsModule } from './modules/sops/sops.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
+import { ActionsModule } from './modules/actions/actions.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CopilotModule } from './modules/copilot/copilot.module';
     IncidentsModule,
     SopsModule,
     CopilotModule,
+    ActionsModule,
   ],
   providers: [
     {

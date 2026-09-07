@@ -80,6 +80,24 @@ enum NotificationChannel {
   SLACK
 }
 
+enum ActionRiskTier {
+  SAFE_AUTOMATIC
+  REQUIRES_APPROVAL
+  MANUAL_ESCALATION
+}
+
+enum ActionExecutionStatus {
+  PENDING_APPROVAL
+  QUEUED
+  RUNNING
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+  ROLLED_BACK
+}
+
 model User {
   id           String       @id @default(uuid())
   email        String       @unique
@@ -91,9 +109,10 @@ model User {
 
   memberships       Membership[]
   teamMemberships   TeamMember[]
-  assignedIncidents Incident[]        @relation("IncidentAssignee")
+  assignedIncidents Incident[]           @relation("IncidentAssignee")
   incidentComments  IncidentComment[]
   timelineEvents    IncidentTimeline[]
+  approvedActions   ActionExecution[]    @relation("ActionApprover")
   notifications     Notification[]
   auditLogs         AuditLog[]
 
@@ -113,6 +132,8 @@ model Organization {
   teams              Team[]
   services           Service[]
   incidents          Incident[]
+  actionExecutions   ActionExecution[]
+  remediationPolicy  OrganizationRemediationPolicy?
   integrations       Integration[]
   slaPolicies        SLAPolicy[]
   knowledgeDocuments KnowledgeDocument[]
@@ -208,6 +229,7 @@ model Service {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   team               Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
   incidents          Incident[]
+  actionExecutions   ActionExecution[]
   knowledgeDocuments KnowledgeDocument[]
 
   @@unique([organizationId, slug])
@@ -236,16 +258,17 @@ model Incident {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  service      Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  team         Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  assigneeUser User?                @relation("IncidentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  events       IncidentEvent[]
-  comments     IncidentComment[]
-  timeline     IncidentTimeline[]
-  assignments  IncidentAssignment[]
-  sla          IncidentSLA?
-  aiAnalyses   AIAnalysis[]
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service          Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  team             Team?                @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  assigneeUser     User?                @relation("IncidentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events           IncidentEvent[]
+  comments         IncidentComment[]
+  timeline         IncidentTimeline[]
+  assignments      IncidentAssignment[]
+  actionExecutions ActionExecution[]
+  sla              IncidentSLA?
+  aiAnalyses       AIAnalysis[]
 
   @@index([organizationId, status, severity, createdAt])
   @@index([organizationId, teamId, status])
@@ -312,6 +335,52 @@ model IncidentAssignment {
 
   @@index([incidentId, assignedAt])
   @@map("incident_assignments")
+}
+
+model ActionExecution {
+  id                  String                @id @default(uuid())
+  organizationId      String
+  incidentId          String
+  actionType          String
+  riskTier            ActionRiskTier        @default(SAFE_AUTOMATIC)
+  status              ActionExecutionStatus @default(QUEUED)
+  isDryRun            Boolean               @default(false)
+  targetServiceId     String?
+  parametersJson      Json
+  executionOutputJson Json?
+  errorMessage        String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  verifiedAt          DateTime?
+  rollbackStatus      String?
+  actorUserId         String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident     Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [targetServiceId], references: [id], onDelete: SetNull)
+  actorUser    User?        @relation("ActionApprover", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, incidentId])
+  @@index([status])
+  @@map("action_executions")
+}
+
+model OrganizationRemediationPolicy {
+  id                           String   @id @default(uuid())
+  organizationId               String   @unique
+  autonomousRemediationEnabled Boolean  @default(true)
+  maxConcurrentActions         Int      @default(2)
+  cooldownPeriodMinutes        Int      @default(15)
+  allowedActionTypes           String[] @default(["RESTART_SERVICE_WORKER", "SCALE_SERVICE_REPLICAS", "UPDATE_POOL_CONFIG", "CLEAR_SERVICE_CACHE"])
+  requireApprovalForProduction Boolean  @default(false)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_remediation_policies")
 }
 
 model Integration {

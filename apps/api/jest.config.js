@@ -1,4 +1,4 @@
-﻿module.exports = {
+module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
@@ -9,11 +9,11 @@
   coverageDirectory: './coverage',
   testEnvironment: 'node',
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/',
-    '^@sopon/contracts$': '<rootDir>/../../packages/contracts/src',
-    '^@sopon/config$': '<rootDir>/../../packages/config/src',
-    '^@sopon/database$': '<rootDir>/../../packages/database/src',
-    '^@sopon/ai$': '<rootDir>/../../packages/ai/src',
-    '^@sopon/ui$': '<rootDir>/../../packages/ui/src',
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@sopon/contracts$': '<rootDir>/../../packages/contracts/src/index.ts',
+    '^@sopon/config$': '<rootDir>/../../packages/config/src/index.ts',
+    '^@sopon/database$': '<rootDir>/../../packages/database/src/index.ts',
+    '^@sopon/ai$': '<rootDir>/../../packages/ai/src/index.ts',
+    '^@sopon/ui$': '<rootDir>/../../packages/ui/src/index.ts',
   },
 };
