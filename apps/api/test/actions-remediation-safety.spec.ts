@@ -137,6 +137,35 @@ describe('Stage 3: Controlled Autonomous Remediation (ACT) Engine & Safety Gates
       expect(resStagingInc.statusCode).toBe(201);
       incidentStagingId = JSON.parse(resStagingInc.body).data.id;
     });
+
+    it('should ingest Payment Gateway Redis runbook in Org A', async () => {
+      const markdownContent = `
+# Payment Gateway Redis Connection Pool Runbook
+
+## Overview
+Remediation procedures when Payment Gateway encounters high latency or 502 errors due to worker socket starvation.
+
+## Remediation Steps
+1. Inspect active client connections with redis-cli info clients
+2. Increase REDIS_MAX_CONNECTIONS pool parameter
+3. Gracefully restart payment-gateway worker pods
+4. Verify HTTP 502 error rates drop below 0.05%
+      `.trim();
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/documents`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          title: 'Payment Gateway Redis Connection Pool Runbook',
+          content: markdownContent,
+          sourceType: 'RUNBOOK',
+          serviceId: serviceStagingId,
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+    });
   });
 
   describe('2. Remediation Policy & Emergency Kill-Switch', () => {
@@ -481,6 +510,249 @@ describe('Stage 3: Controlled Autonomous Remediation (ACT) Engine & Safety Gates
       });
 
       expect(res.statusCode).toBe(403);
+    });
+
+    it('should forbid User B from dry-running or rolling back actions on Org A incident', async () => {
+      const dryRunRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentProdId}/actions/dry-run`,
+        headers: { authorization: `Bearer ${userBToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          parameters: { gracePeriodSeconds: 30 },
+        },
+      });
+      expect(dryRunRes.statusCode).toBe(403);
+
+      const rollbackRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentProdId}/actions/some-id/rollback`,
+        headers: { authorization: `Bearer ${userBToken}` },
+      });
+      expect(rollbackRes.statusCode).toBe(403);
+    });
+  });
+
+  describe('9. Precondition Failures & Policy Action-Type Restrictions', () => {
+    it('should fail when target service does not exist in organization', async () => {
+      const nonExistentServiceId = '00000000-0000-0000-0000-000000000000';
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentStagingId}/actions/execute`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          targetServiceId: nonExistentServiceId,
+          parameters: {
+            gracePeriodSeconds: 30,
+            drainConnections: true,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('should fail when action type is disallowed by organization policy', async () => {
+      // 1. Restrict policy to SCALE_SERVICE_REPLICAS only
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/organizations/${userAOrgId}/remediation-policy`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          allowedActionTypes: ['SCALE_SERVICE_REPLICAS'],
+        },
+      });
+
+      // 2. Attempt RESTART_SERVICE_WORKER
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentStagingId}/actions/execute`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          targetServiceId: serviceStagingId,
+          parameters: {
+            gracePeriodSeconds: 30,
+            drainConnections: true,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      const json = JSON.parse(res.body);
+      expect(json.error.code).toBe('ACTION_TYPE_NOT_ALLOWED_BY_POLICY');
+
+      // 3. Restore allowed actions
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/organizations/${userAOrgId}/remediation-policy`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          allowedActionTypes: [
+            'RESTART_SERVICE_WORKER',
+            'SCALE_SERVICE_REPLICAS',
+            'UPDATE_POOL_CONFIG',
+            'CLEAR_SERVICE_CACHE',
+          ],
+        },
+      });
+    });
+  });
+
+  describe('10. Shell Injection Protection & Parameter Bounds', () => {
+    it('should reject parameter payloads attempting shell injection or invalid characters', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentStagingId}/actions/execute`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          parameters: {
+            serviceSlug: '; rm -rf / && echo pwned',
+            gracePeriodSeconds: 'invalid-string' as any,
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('should reject replica scaling when replicas exceed ceiling in runner preconditions', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${incidentStagingId}/actions/execute`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'SCALE_SERVICE_REPLICAS',
+          targetServiceId: serviceStagingId,
+          parameters: {
+            targetReplicas: 35, // Schema max is 50, but runner ceiling precondition is 20
+            reason: 'High load burst',
+          },
+        },
+      });
+
+      expect(res.statusCode).toBe(400);
+      const json = JSON.parse(res.body);
+      expect(json.error.code).toBe('PRECONDITION_FAILED');
+    });
+  });
+
+  describe('11. Secret Scrubbing & Audit Trail Integrity', () => {
+    it('should verify database action executions and audit logs never store auth secrets or passwords', async () => {
+      const executions = await prisma.actionExecution.findMany({
+        where: { organizationId: userAOrgId },
+      });
+
+      expect(executions.length).toBeGreaterThan(0);
+
+      for (const exec of executions) {
+        const paramsStr = JSON.stringify(exec.parametersJson || {});
+        const outputStr = JSON.stringify(exec.executionOutputJson || {});
+
+        expect(paramsStr).not.toContain('Password123!');
+        expect(paramsStr).not.toContain(userAToken);
+        expect(outputStr).not.toContain('Password123!');
+        expect(outputStr).not.toContain(userAToken);
+      }
+
+      const auditLogs = await prisma.auditLog.findMany({
+        where: { organizationId: userAOrgId },
+      });
+
+      for (const log of auditLogs) {
+        const metaStr = JSON.stringify(log.metadataJson || {});
+        expect(metaStr).not.toContain('Password123!');
+        expect(metaStr).not.toContain(userAToken);
+      }
+    });
+  });
+
+  describe('12. End-to-End Autonomous Remediation Lifecycle', () => {
+    it('should execute full lifecycle: Analyze -> Plan -> Dry-Run -> Execute -> Verify -> Auto-Resolve', async () => {
+      // 1. Create a fresh incident
+      const incRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          title: 'HTTP 502 High Latency on Core Payment Service',
+          description: 'Payment gateway returning 502 Bad Gateway due to worker socket starvation.',
+          severity: IncidentSeverity.HIGH,
+          serviceId: serviceStagingId,
+        },
+      });
+      expect(incRes.statusCode).toBe(201);
+      const newIncId = JSON.parse(incRes.body).data.id;
+
+      // 2. Trigger Autonomous RCA
+      const analyzeRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${newIncId}/analyze`,
+        headers: { authorization: `Bearer ${userAToken}` },
+      });
+      expect(analyzeRes.statusCode).toBe(200);
+      const analysisData = JSON.parse(analyzeRes.body).data;
+      expect(analysisData.understand.detectedSymptoms.length).toBeGreaterThan(0);
+      expect(analysisData.reasonRca.confidenceScore).toBeGreaterThanOrEqual(0.7);
+      expect(analysisData.decidePlan.actions.length).toBeGreaterThan(0);
+
+      // 3. Dry-Run the first planned remediation action
+      const dryRunRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${newIncId}/actions/dry-run`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          targetServiceId: serviceStagingId,
+          parameters: {
+            gracePeriodSeconds: 20,
+            drainConnections: true,
+            reason: 'Simulate planned worker restart',
+          },
+        },
+      });
+      expect(dryRunRes.statusCode).toBe(200);
+      expect(JSON.parse(dryRunRes.body).data.isDryRun).toBe(true);
+
+      // Verify incident is still OPEN after dry-run
+      const checkOpenRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${newIncId}`,
+        headers: { authorization: `Bearer ${userAToken}` },
+      });
+      expect(JSON.parse(checkOpenRes.body).data.status).toBe('OPEN');
+
+      // 4. Real Safe Execution
+      const execRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${newIncId}/actions/execute`,
+        headers: { authorization: `Bearer ${userAToken}` },
+        payload: {
+          actionType: 'RESTART_SERVICE_WORKER',
+          targetServiceId: serviceStagingId,
+          parameters: {
+            gracePeriodSeconds: 15,
+            drainConnections: true,
+            reason: 'Execute planned worker restart',
+          },
+        },
+      });
+      expect(execRes.statusCode).toBe(200);
+      const execJson = JSON.parse(execRes.body).data;
+      expect(execJson.status).toBe('SUCCEEDED');
+      expect(execJson.verificationResults.every((p: any) => p.passed)).toBe(true);
+
+      // 5. Closed-loop verification check: Incident should now be automatically RESOLVED
+      const checkResolvedRes = await app.inject({
+        method: 'GET',
+        url: `/api/v1/organizations/${userAOrgId}/incidents/${newIncId}`,
+        headers: { authorization: `Bearer ${userAToken}` },
+      });
+      const resolvedInc = JSON.parse(checkResolvedRes.body).data;
+      expect(resolvedInc.status).toBe('RESOLVED');
+      expect(resolvedInc.resolvedAt).not.toBeNull();
     });
   });
 });
