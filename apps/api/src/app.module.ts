@@ -12,6 +12,7 @@ import { IncidentsModule } from './modules/incidents/incidents.module';
 import { SopsModule } from './modules/sops/sops.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { ActionsModule } from './modules/actions/actions.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ActionsModule } from './modules/actions/actions.module';
     SopsModule,
     CopilotModule,
     ActionsModule,
+    TelemetryModule,
   ],
   providers: [
     {
