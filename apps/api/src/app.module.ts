@@ -13,6 +13,7 @@ import { SopsModule } from './modules/sops/sops.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { ActionsModule } from './modules/actions/actions.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
+import { VaultModule } from './modules/vault/vault.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
     CopilotModule,
     ActionsModule,
     TelemetryModule,
+    VaultModule,
   ],
   providers: [
     {

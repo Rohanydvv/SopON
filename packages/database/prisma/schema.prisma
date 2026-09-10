@@ -143,6 +143,7 @@ model Organization {
   webhookEndpoints   WebhookEndpoint[]
   apiKeys            ApiKey[]
   auditLogs          AuditLog[]
+  vaultCredentials   VaultCredential[]
 
   @@map("organizations")
 }
@@ -231,6 +232,7 @@ model Service {
   incidents          Incident[]
   actionExecutions   ActionExecution[]
   knowledgeDocuments KnowledgeDocument[]
+  vaultCredentials   VaultCredential[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -561,4 +563,31 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+model VaultCredential {
+  id             String             @id @default(uuid())
+  organizationId String
+  serviceId      String?
+  name           String
+  targetType     String             // "KUBERNETES", "DATADOG", "PROMETHEUS", "AWS", "HTTP_ENDPOINT", "REDIS", "POSTGRES", "CUSTOM"
+  environment    ServiceEnvironment @default(PRODUCTION)
+  encryptedDek   String             // Data Encryption Key encrypted by Master KEK (Base64)
+  encryptedData  String             // Secret payload encrypted by DEK with AES-256-GCM (Base64)
+  ivHex          String             // 96-bit Initialization Vector (Hex)
+  authTagHex     String             // 128-bit Authentication Tag (Hex)
+  keyVersion     Int                @default(1)
+  keyFingerprint String             // SHA256 fingerprint of plaintext payload for non-reversible integrity verification
+  metadataJson   Json?              // Non-sensitive metadata (e.g. clusterName, region, host)
+  lastRotatedAt  DateTime           @default(now())
+  lastVerifiedAt DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, targetType, environment])
+  @@index([organizationId, serviceId])
+  @@map("vault_credentials")
 }
