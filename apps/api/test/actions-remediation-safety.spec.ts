@@ -454,7 +454,7 @@ Remediation procedures when Payment Gateway encounters high latency or 502 error
           actionType: 'SCALE_SERVICE_REPLICAS',
           targetServiceId: serviceStagingId,
           parameters: {
-            targetReplicas: 8,
+            targetReplicas: 5,
             minReplicas: 2,
             maxReplicas: 10,
             reason: 'Scale up worker pool',

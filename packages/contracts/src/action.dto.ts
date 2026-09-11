@@ -33,10 +33,11 @@ export const ActionExecutionStatusSchema = z.enum([
 
 export type ActionExecutionStatus = z.infer<typeof ActionExecutionStatusSchema>;
 
-// Strict Zod parameter schemas for each allowlisted action type
 export const RestartServiceParamsSchema = z.object({
   serviceId: z.string().uuid().optional(),
   serviceSlug: z.string().min(2).max(64).optional(),
+  namespace: z.string().min(2).max(64).optional(),
+  clusterName: z.string().min(2).max(64).optional(),
   gracePeriodSeconds: z.number().int().min(5).max(120).optional().default(30),
   gracefulTimeoutSeconds: z.number().int().min(5).max(120).optional(),
   drainConnections: z.boolean().optional().default(true),
@@ -48,7 +49,10 @@ export type RestartServiceParams = z.infer<typeof RestartServiceParamsSchema>;
 export const ScaleServiceParamsSchema = z.object({
   serviceId: z.string().uuid().optional(),
   serviceSlug: z.string().min(2).max(64).optional(),
+  namespace: z.string().min(2).max(64).optional(),
+  clusterName: z.string().min(2).max(64).optional(),
   targetReplicas: z.number().int().min(1).max(50),
+  currentReplicas: z.number().int().min(1).max(50).optional(),
   minReplicas: z.number().int().min(1).max(50).optional(),
   maxReplicas: z.number().int().min(1).max(50).optional(),
   reason: z.string().min(3).max(255).optional(),

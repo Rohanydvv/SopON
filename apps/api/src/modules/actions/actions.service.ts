@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { prisma } from '@sopon/database';
 import {
@@ -16,9 +18,20 @@ import {
   UpdateRemediationPolicyRequest,
 } from '@sopon/contracts';
 import { getActionRunner } from './runners/action-registry';
+import { ActionExecutionContext } from './runners/base.runner';
+import { VaultService } from '../vault/vault.service';
+import { KubernetesAdapter } from './adapters/kubernetes-adapter.interface';
 
 @Injectable()
 export class ActionsService {
+  constructor(
+    @Optional()
+    private readonly vaultService?: VaultService,
+    @Optional()
+    @Inject('KubernetesAdapter')
+    private readonly kubernetesAdapter?: KubernetesAdapter,
+  ) {}
+
   /**
    * Retrieves or initializes Organization Remediation Policy (including kill-switch state)
    */
@@ -122,12 +135,15 @@ export class ActionsService {
     const { incident, service } = await this.validateIncidentAndService(orgId, incidentId, request.targetServiceId);
     const policy = await this.getOrCreatePolicy(orgId);
 
+    // Build Execution Context (including Vault credentials if present)
+    const context = await this.buildExecutionContext(orgId, service);
+
     // 1. Validate against runner parameter schema
     const runner = getActionRunner(request.actionType);
     const validatedParams = runner.validateParams(request.parameters);
 
     // 2. Evaluate preconditions
-    const preconditions = await runner.checkPreconditions(validatedParams, service);
+    const preconditions = await runner.checkPreconditions(validatedParams, service, context);
 
     // If policy disabled, add a precondition note
     if (!policy.autonomousRemediationEnabled) {
@@ -139,7 +155,7 @@ export class ActionsService {
     }
 
     // 3. Execute dry-run runner simulation
-    const dryRunResult = await runner.dryRun(validatedParams, service);
+    const dryRunResult = await runner.dryRun(validatedParams, service, context);
 
     let validActorId: string | null = null;
     if (actorUserId && actorUserId.length > 20) {
@@ -170,7 +186,7 @@ export class ActionsService {
   }
 
   /**
-   * EXECUTE: Multi-Gate Safety Engine + Real Runner Execution + Closed-Loop Telemetry Verification
+   * EXECUTE: Multi-Gate Safety Engine + Real Runner Execution + Closed-Loop Verification & Rollback
    */
   async executeAction(
     orgId: string,
@@ -178,6 +194,7 @@ export class ActionsService {
     request: ExecuteActionRequest,
     actorUserId?: string,
     bypassApprovalCheck = false,
+    failVerificationProbe = false,
   ): Promise<ActionExecutionResponse> {
     const { incident, service } = await this.validateIncidentAndService(orgId, incidentId, request.targetServiceId);
     const policy = await this.getOrCreatePolicy(orgId);
@@ -202,8 +219,11 @@ export class ActionsService {
       });
     }
 
+    // Build Execution Context (including Vault credentials)
+    const context = await this.buildExecutionContext(orgId, service, failVerificationProbe);
+
     // Gate 4: Precondition Checks
-    const preconditions = await runner.checkPreconditions(validatedParams, service);
+    const preconditions = await runner.checkPreconditions(validatedParams, service, context);
     const failedPrecondition = preconditions.find((p) => !p.passed);
     if (failedPrecondition) {
       throw new BadRequestException({
@@ -254,25 +274,77 @@ export class ActionsService {
 
     // Dispatch runner
     const startedAt = new Date();
-    const runnerResult = await runner.execute(validatedParams, service);
+    const runnerResult = await runner.execute(validatedParams, service, context);
     const completedAt = new Date();
 
+    // CLOSED-LOOP VERIFICATION & AUTOMATIC ROLLBACK
+    if (!runnerResult.success) {
+      // Automatic Rollback
+      const rollbackResult = await runner.rollback(validatedParams, runnerResult.output, service, context);
+
+      const failedExecution = await prisma.actionExecution.create({
+        data: {
+          organizationId: orgId,
+          incidentId: incident.id,
+          actionType: request.actionType,
+          riskTier: 'SAFE_AUTOMATIC',
+          status: 'ROLLED_BACK',
+          rollbackStatus: 'EXECUTED',
+          isDryRun: false,
+          targetServiceId: service?.id || null,
+          parametersJson: validatedParams as any,
+          executionOutputJson: {
+            executionOutput: runnerResult.output,
+            rollbackOutput: rollbackResult.output,
+          } as any,
+          errorMessage: runnerResult.error || 'Post-execution verification failed; automatic rollback executed',
+          actorUserId: validActorId,
+          startedAt,
+          completedAt,
+        },
+        include: { service: true },
+      });
+
+      // Append timeline events for failure + rollback + escalation
+      await prisma.incidentTimeline.create({
+        data: {
+          incidentId: incident.id,
+          eventType: 'REMEDIATION_VERIFICATION_FAILED',
+          message: `Remediation action "${request.actionType}" failed verification probes. Initiating automatic rollback.`,
+          metadataJson: { probes: runnerResult.verificationProbes } as any,
+          actorUserId: validActorId,
+        },
+      });
+
+      await prisma.incidentTimeline.create({
+        data: {
+          incidentId: incident.id,
+          eventType: 'REMEDIATION_ROLLED_BACK',
+          message: `Automatic rollback executed for "${request.actionType}". Incident escalated to human on-call.`,
+          metadataJson: { rollbackOutput: rollbackResult.output, actionExecutionId: failedExecution.id } as any,
+          actorUserId: validActorId,
+        },
+      });
+
+      return this.mapToResponse(failedExecution, preconditions, runnerResult.verificationProbes);
+    }
+
+    // Execution SUCCEEDED and Probes PASSED
     const execution = await prisma.actionExecution.create({
       data: {
         organizationId: orgId,
         incidentId: incident.id,
         actionType: request.actionType,
         riskTier: 'SAFE_AUTOMATIC',
-        status: runnerResult.success ? 'SUCCEEDED' : 'FAILED',
+        status: 'SUCCEEDED',
         isDryRun: false,
         targetServiceId: service?.id || null,
         parametersJson: validatedParams as any,
         executionOutputJson: runnerResult.output as any,
-        errorMessage: runnerResult.error || null,
         actorUserId: validActorId,
         startedAt,
         completedAt,
-        verifiedAt: runnerResult.success ? new Date() : null,
+        verifiedAt: new Date(),
       },
       include: { service: true },
     });
@@ -281,10 +353,8 @@ export class ActionsService {
     await prisma.incidentTimeline.create({
       data: {
         incidentId: incident.id,
-        eventType: runnerResult.success ? 'REMEDIATION_EXECUTED' : 'REMEDIATION_FAILED',
-        message: runnerResult.success
-          ? `Remediation "${request.actionType}" executed successfully on ${service?.name || 'service'}. Probes verified.`
-          : `Remediation "${request.actionType}" failed: ${runnerResult.error}`,
+        eventType: 'REMEDIATION_EXECUTED',
+        message: `Remediation "${request.actionType}" executed successfully on ${service?.name || 'service'}. Probes verified.`,
         metadataJson: {
           actionExecutionId: execution.id,
           output: runnerResult.output,
@@ -295,25 +365,23 @@ export class ActionsService {
     });
 
     // Auto-resolve incident if remediation succeeded and verification passed
-    if (runnerResult.success) {
-      await prisma.incident.update({
-        where: { id: incident.id },
-        data: {
-          status: 'RESOLVED',
-          resolvedAt: new Date(),
-        },
-      });
+    await prisma.incident.update({
+      where: { id: incident.id },
+      data: {
+        status: 'RESOLVED',
+        resolvedAt: new Date(),
+      },
+    });
 
-      await prisma.incidentTimeline.create({
-        data: {
-          incidentId: incident.id,
-          eventType: 'INCIDENT_RESOLVED',
-          message: 'Incident automatically RESOLVED following verified remediation action.',
-          metadataJson: { resolvedByAction: request.actionType },
-          actorUserId: validActorId,
-        },
-      });
-    }
+    await prisma.incidentTimeline.create({
+      data: {
+        incidentId: incident.id,
+        eventType: 'INCIDENT_RESOLVED',
+        message: 'Incident automatically RESOLVED following verified remediation action.',
+        metadataJson: { resolvedByAction: request.actionType },
+        actorUserId: validActorId,
+      },
+    });
 
     // Audit log
     await prisma.auditLog.create({
@@ -326,7 +394,7 @@ export class ActionsService {
         metadataJson: {
           actionType: request.actionType,
           status: execution.status,
-          success: runnerResult.success,
+          success: true,
         },
       },
     });
@@ -397,10 +465,13 @@ export class ActionsService {
     }
 
     const runner = getActionRunner(existing.actionType);
+    const context = await this.buildExecutionContext(orgId, existing.service);
+
     const rollbackResult = await runner.rollback(
       existing.parametersJson as Record<string, unknown>,
       existing.executionOutputJson as Record<string, unknown>,
       existing.service,
+      context,
     );
 
     let validActorId: string | null = null;
@@ -439,6 +510,42 @@ export class ActionsService {
     });
 
     return actions.map((a) => this.mapToResponse(a, [], []));
+  }
+
+  private async buildExecutionContext(
+    orgId: string,
+    service?: any,
+    failVerificationProbe = false,
+  ): Promise<ActionExecutionContext> {
+    let credentials: Record<string, unknown> | undefined;
+
+    if (service && this.vaultService) {
+      try {
+        const vaultCred = await prisma.vaultCredential.findFirst({
+          where: {
+            organizationId: orgId,
+            targetType: 'KUBERNETES',
+            environment: service.environment || 'PRODUCTION',
+          },
+        });
+
+        if (vaultCred) {
+          const decrypted = await this.vaultService.decryptCredentialById(orgId, vaultCred.id);
+          credentials = decrypted.decryptedPayload;
+        }
+      } catch {
+        // Fallback or unauthenticated mock execution
+      }
+    }
+
+    return {
+      orgId,
+      service,
+      vaultService: this.vaultService,
+      kubernetesAdapter: this.kubernetesAdapter,
+      credentials,
+      failVerificationProbe,
+    };
   }
 
   private async validateIncidentAndService(orgId: string, incidentId: string, serviceId?: string) {

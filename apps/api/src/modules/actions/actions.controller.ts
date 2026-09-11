@@ -43,11 +43,31 @@ export class ActionsController {
     return this.actionsService.getOrCreatePolicy(orgId);
   }
 
+  @Get('actions/policy')
+  @ApiOperation({ summary: 'Get organization autonomous remediation policy (alias)' })
+  async getPolicyAlias(
+    @Param('orgId') orgId: string,
+  ): Promise<OrganizationRemediationPolicyResponse> {
+    return this.actionsService.getOrCreatePolicy(orgId);
+  }
+
   @Patch('remediation-policy')
   @UseGuards(RolesGuard)
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Update organization autonomous remediation policy or trigger kill-switch' })
   async updatePolicy(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: AuthSessionUser,
+    @Body(new ZodValidationPipe(UpdateRemediationPolicyRequestSchema)) body: UpdateRemediationPolicyRequest,
+  ): Promise<OrganizationRemediationPolicyResponse> {
+    return this.actionsService.updatePolicy(orgId, body, user.id);
+  }
+
+  @Patch('actions/policy')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Update organization autonomous remediation policy (alias)' })
+  async updatePolicyAlias(
     @Param('orgId') orgId: string,
     @CurrentUser() user: AuthSessionUser,
     @Body(new ZodValidationPipe(UpdateRemediationPolicyRequestSchema)) body: UpdateRemediationPolicyRequest,
@@ -61,6 +81,20 @@ export class ActionsController {
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER)
   @ApiOperation({ summary: 'Dry-run simulate a remediation action against safety gates and preconditions' })
   async dryRunAction(
+    @Param('orgId') orgId: string,
+    @Param('incidentId') incidentId: string,
+    @CurrentUser() user: AuthSessionUser,
+    @Body(new ZodValidationPipe(ExecuteActionRequestSchema)) body: ExecuteActionRequest,
+  ): Promise<ActionExecutionResponse> {
+    return this.actionsService.dryRunAction(orgId, incidentId, body, user.id);
+  }
+
+  @Post('incidents/:incidentId/actions/simulate')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.ENGINEER)
+  @ApiOperation({ summary: 'Simulate remediation action (alias)' })
+  async simulateAction(
     @Param('orgId') orgId: string,
     @Param('incidentId') incidentId: string,
     @CurrentUser() user: AuthSessionUser,

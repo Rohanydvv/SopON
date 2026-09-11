@@ -326,12 +326,12 @@ export class VaultService {
       if (userExists) validActorId = userExists.id;
     }
 
-    // System-level audit log
-    const firstOrg = staleCredentials[0]?.organizationId;
-    if (firstOrg) {
+    // System-level audit log for all affected organizations
+    const distinctOrgIds = Array.from(new Set(staleCredentials.map((c) => c.organizationId)));
+    for (const orgId of distinctOrgIds) {
       await prisma.auditLog.create({
         data: {
-          organizationId: firstOrg,
+          organizationId: orgId,
           actorUserId: validActorId,
           action: 'VAULT_MASTER_KEY_ROTATED',
           entityType: 'KmsProvider',
