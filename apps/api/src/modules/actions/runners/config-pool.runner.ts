@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { UpdatePoolConfigParamsSchema } from '@sopon/contracts';
-import { ActionPreconditionCheck, ActionRunnerResult, BaseActionRunner } from './base.runner';
+import {
+  ActionExecutionContext,
+  ActionPreconditionCheck,
+  ActionRunnerResult,
+  BaseActionRunner,
+} from './base.runner';
 
 export class UpdatePoolConfigRunner extends BaseActionRunner {
   validateParams(params: unknown): Record<string, unknown> {
@@ -14,7 +19,11 @@ export class UpdatePoolConfigRunner extends BaseActionRunner {
     return parsed.data as Record<string, unknown>;
   }
 
-  async checkPreconditions(params: Record<string, unknown>, service?: any): Promise<ActionPreconditionCheck[]> {
+  async checkPreconditions(
+    params: Record<string, unknown>,
+    service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionPreconditionCheck[]> {
     const maxConn = Number(params.maxConnections ?? params.poolSize ?? 50);
     const timeout = Number(params.timeoutMs ?? params.connectionTimeoutMs ?? 5000);
     return [
@@ -33,7 +42,11 @@ export class UpdatePoolConfigRunner extends BaseActionRunner {
     ];
   }
 
-  async dryRun(params: Record<string, unknown>, service?: any): Promise<ActionRunnerResult> {
+  async dryRun(
+    params: Record<string, unknown>,
+    service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
     const maxConn = Number(params.maxConnections ?? params.poolSize ?? 50);
     const timeout = Number(params.timeoutMs ?? params.connectionTimeoutMs ?? 5000);
     return {
@@ -56,11 +69,29 @@ export class UpdatePoolConfigRunner extends BaseActionRunner {
     };
   }
 
-  async execute(params: Record<string, unknown>, service?: any): Promise<ActionRunnerResult> {
+  async execute(
+    params: Record<string, unknown>,
+    service?: any,
+    context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
     const maxConn = Number(params.maxConnections ?? params.poolSize ?? 50);
     const timeout = Number(params.timeoutMs ?? params.connectionTimeoutMs ?? 5000);
+    const shouldFailProbes = context?.failVerificationProbe === true;
+
+    const verificationProbes = [
+      {
+        probe: 'redis:pool_utilization_percent',
+        passed: !shouldFailProbes,
+        message: !shouldFailProbes
+          ? 'Pool utilization decreased to 22%'
+          : 'Pool utilization remained critical at 98%',
+      },
+    ];
+
+    const allProbesPassed = verificationProbes.every((p) => p.passed);
+
     return {
-      success: true,
+      success: allProbesPassed,
       output: {
         action: 'UPDATE_POOL_CONFIG',
         targetService: service?.name,
@@ -68,19 +99,19 @@ export class UpdatePoolConfigRunner extends BaseActionRunner {
         appliedMaxConnections: maxConn,
         appliedTimeoutMs: timeout,
         updatedAt: new Date().toISOString(),
-        status: 'CONFIG_APPLIED',
+        status: allProbesPassed ? 'CONFIG_APPLIED' : 'VERIFICATION_FAILED',
       },
-      verificationProbes: [
-        {
-          probe: 'redis:pool_utilization_percent',
-          passed: true,
-          message: 'Pool utilization decreased to 22%',
-        },
-      ],
+      error: allProbesPassed ? undefined : 'Post-execution verification probes failed',
+      verificationProbes,
     };
   }
 
-  async rollback(_params: Record<string, unknown>, previousOutput?: Record<string, unknown> | null, service?: any): Promise<ActionRunnerResult> {
+  async rollback(
+    _params: Record<string, unknown>,
+    previousOutput?: Record<string, unknown> | null,
+    service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
     const prevMax = previousOutput?.previousMaxConnections ? Number(previousOutput.previousMaxConnections) : 50;
     return {
       success: true,

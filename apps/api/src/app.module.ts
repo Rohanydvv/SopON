@@ -14,6 +14,8 @@ import { CopilotModule } from './modules/copilot/copilot.module';
 import { ActionsModule } from './modules/actions/actions.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { VaultModule } from './modules/vault/vault.module';
+import { CircuitBreakerModule } from './modules/circuit-breaker/circuit-breaker.module';
+import { AutonomousModule } from './modules/autonomous/autonomous.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { VaultModule } from './modules/vault/vault.module';
     ActionsModule,
     TelemetryModule,
     VaultModule,
+    CircuitBreakerModule,
+    AutonomousModule,
   ],
   providers: [
     {

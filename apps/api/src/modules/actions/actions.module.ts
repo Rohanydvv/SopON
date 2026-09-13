@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { ActionsService } from './actions.service';
 import { ActionsController } from './actions.controller';
 import { VaultModule } from '../vault/vault.module';
+import { CircuitBreakerModule } from '../circuit-breaker/circuit-breaker.module';
 import { MockKubernetesAdapter } from './adapters/mock-kubernetes.adapter';
 
 @Module({
-  imports: [VaultModule],
+  imports: [VaultModule, CircuitBreakerModule],
   controllers: [ActionsController],
   providers: [
     ActionsService,

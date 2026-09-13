@@ -21,7 +21,7 @@ export class TenantGuard implements CanActivate {
     }
 
     // Extract orgId from route params or fallback header
-    const orgId = request.params.orgId || request.headers['x-organization-id'];
+    const orgId = request.params.orgId || request.params.organizationId || request.headers['x-organization-id'];
 
     if (!orgId) {
       throw new ForbiddenException({

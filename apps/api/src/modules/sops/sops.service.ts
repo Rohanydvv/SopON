@@ -375,7 +375,13 @@ export class SopsService {
     const chunks = await prisma.knowledgeChunk.findMany({
       where: {
         organizationId: orgId,
-        ...(serviceId ? { document: { serviceId } } : {}),
+        ...(serviceId
+          ? {
+              document: {
+                OR: [{ serviceId }, { serviceId: null }],
+              },
+            }
+          : {}),
       },
       include: {
         document: true,

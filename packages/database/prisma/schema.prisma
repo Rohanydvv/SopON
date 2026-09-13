@@ -127,23 +127,24 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships        Membership[]
-  invitations        Invitation[]
-  teams              Team[]
-  services           Service[]
-  incidents          Incident[]
-  actionExecutions   ActionExecution[]
-  remediationPolicy  OrganizationRemediationPolicy?
-  integrations       Integration[]
-  slaPolicies        SLAPolicy[]
-  knowledgeDocuments KnowledgeDocument[]
-  knowledgeChunks    KnowledgeChunk[]
-  aiAnalyses         AIAnalysis[]
-  notifications      Notification[]
-  webhookEndpoints   WebhookEndpoint[]
-  apiKeys            ApiKey[]
-  auditLogs          AuditLog[]
-  vaultCredentials   VaultCredential[]
+  memberships            Membership[]
+  invitations            Invitation[]
+  teams                  Team[]
+  services               Service[]
+  incidents              Incident[]
+  actionExecutions       ActionExecution[]
+  remediationPolicy      OrganizationRemediationPolicy?
+  integrations           Integration[]
+  slaPolicies            SLAPolicy[]
+  knowledgeDocuments     KnowledgeDocument[]
+  knowledgeChunks        KnowledgeChunk[]
+  aiAnalyses             AIAnalysis[]
+  notifications          Notification[]
+  webhookEndpoints       WebhookEndpoint[]
+  apiKeys                ApiKey[]
+  auditLogs              AuditLog[]
+  vaultCredentials       VaultCredential[]
+  serviceCircuitBreakers ServiceCircuitBreaker[]
 
   @@map("organizations")
 }
@@ -233,6 +234,7 @@ model Service {
   actionExecutions   ActionExecution[]
   knowledgeDocuments KnowledgeDocument[]
   vaultCredentials   VaultCredential[]
+  circuitBreaker     ServiceCircuitBreaker?
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -377,6 +379,8 @@ model OrganizationRemediationPolicy {
   cooldownPeriodMinutes        Int      @default(15)
   allowedActionTypes           String[] @default(["RESTART_SERVICE_WORKER", "SCALE_SERVICE_REPLICAS", "UPDATE_POOL_CONFIG", "CLEAR_SERVICE_CACHE"])
   requireApprovalForProduction Boolean  @default(false)
+  circuitBreakerStrikeThreshold Int     @default(3)
+  circuitBreakerWindowMinutes   Int     @default(60)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
@@ -590,4 +594,34 @@ model VaultCredential {
   @@index([organizationId, targetType, environment])
   @@index([organizationId, serviceId])
   @@map("vault_credentials")
+}
+
+model ServiceCircuitBreaker {
+  id                    String    @id @default(uuid())
+  organizationId        String
+  serviceId             String    @unique
+  state                 String    @default("CLOSED") // "CLOSED", "OPEN", "HALF_OPEN"
+  failureStrikes        Int       @default(0)
+  strikeWindowStart     DateTime  @default(now())
+  lastFailureAt         DateTime?
+  lastExecutionAt       DateTime?
+  trippedAt             DateTime?
+  trippedReason         String?
+  trippedByActionId     String?
+  cooldownEndsAt        DateTime?
+  resetTimeoutAt        DateTime?
+  manuallyResetAt       DateTime?
+  manuallyResetByUserId String?
+  lockOwnerToken        String?
+  lockFencingToken      Int       @default(0)
+  lockExpiresAt         DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, serviceId])
+  @@index([state])
+  @@map("service_circuit_breakers")
 }

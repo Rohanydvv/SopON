@@ -20,6 +20,7 @@ import {
 import { getActionRunner } from './runners/action-registry';
 import { ActionExecutionContext } from './runners/base.runner';
 import { VaultService } from '../vault/vault.service';
+import { CircuitBreakerService } from '../circuit-breaker/circuit-breaker.service';
 import { KubernetesAdapter } from './adapters/kubernetes-adapter.interface';
 
 @Injectable()
@@ -30,6 +31,8 @@ export class ActionsService {
     @Optional()
     @Inject('KubernetesAdapter')
     private readonly kubernetesAdapter?: KubernetesAdapter,
+    @Optional()
+    private readonly circuitBreakerService?: CircuitBreakerService,
   ) {}
 
   /**
@@ -326,6 +329,16 @@ export class ActionsService {
         },
       });
 
+      if (service?.id && this.circuitBreakerService) {
+        await this.circuitBreakerService.recordStrike(
+          orgId,
+          service.id,
+          failedExecution.errorMessage || 'Post-execution verification failed; automatic rollback executed',
+          failedExecution.id,
+        );
+        await this.circuitBreakerService.setCooldown(orgId, service.id);
+      }
+
       return this.mapToResponse(failedExecution, preconditions, runnerResult.verificationProbes);
     }
 
@@ -382,6 +395,10 @@ export class ActionsService {
         actorUserId: validActorId,
       },
     });
+
+    if (service?.id && this.circuitBreakerService) {
+      await this.circuitBreakerService.setCooldown(orgId, service.id);
+    }
 
     // Audit log
     await prisma.auditLog.create({

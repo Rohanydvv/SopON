@@ -13,3 +13,4 @@ export * from './copilot.dto';
 export * from './action.dto';
 export * from './telemetry.dto';
 export * from './vault.dto';
+export * from './circuit-breaker.dto';

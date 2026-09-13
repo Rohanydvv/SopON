@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { ClearCacheParamsSchema } from '@sopon/contracts';
-import { ActionPreconditionCheck, ActionRunnerResult, BaseActionRunner } from './base.runner';
+import {
+  ActionExecutionContext,
+  ActionPreconditionCheck,
+  ActionRunnerResult,
+  BaseActionRunner,
+} from './base.runner';
 
 export class ClearCacheRunner extends BaseActionRunner {
   validateParams(params: unknown): Record<string, unknown> {
@@ -14,7 +19,11 @@ export class ClearCacheRunner extends BaseActionRunner {
     return parsed.data as Record<string, unknown>;
   }
 
-  async checkPreconditions(params: Record<string, unknown>, service?: any): Promise<ActionPreconditionCheck[]> {
+  async checkPreconditions(
+    params: Record<string, unknown>,
+    service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionPreconditionCheck[]> {
     return [
       {
         check: 'Target service exists',
@@ -27,7 +36,11 @@ export class ClearCacheRunner extends BaseActionRunner {
     ];
   }
 
-  async dryRun(params: Record<string, unknown>, service?: any): Promise<ActionRunnerResult> {
+  async dryRun(
+    params: Record<string, unknown>,
+    service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
     return {
       success: true,
       output: {
@@ -47,28 +60,46 @@ export class ClearCacheRunner extends BaseActionRunner {
     };
   }
 
-  async execute(params: Record<string, unknown>, service?: any): Promise<ActionRunnerResult> {
+  async execute(
+    params: Record<string, unknown>,
+    service?: any,
+    context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
+    const shouldFailProbes = context?.failVerificationProbe === true;
+
+    const verificationProbes = [
+      {
+        probe: `redis:keys(${params.keyPrefix})`,
+        passed: !shouldFailProbes,
+        message: !shouldFailProbes
+          ? 'Key pattern cleared from cache cluster'
+          : 'Cache eviction failed; keys still present in cache',
+      },
+    ];
+
+    const allProbesPassed = verificationProbes.every((p) => p.passed);
+
     return {
-      success: true,
+      success: allProbesPassed,
       output: {
         action: 'CLEAR_SERVICE_CACHE',
         targetService: service?.name,
         keyPrefix: params.keyPrefix,
         keysFlushedCount: 42,
         flushedAt: new Date().toISOString(),
-        status: 'CACHE_FLUSH_COMPLETED',
+        status: allProbesPassed ? 'CACHE_FLUSH_COMPLETED' : 'VERIFICATION_FAILED',
       },
-      verificationProbes: [
-        {
-          probe: `redis:keys(${params.keyPrefix})`,
-          passed: true,
-          message: 'Key pattern cleared from cache cluster',
-        },
-      ],
+      error: allProbesPassed ? undefined : 'Post-execution verification probes failed',
+      verificationProbes,
     };
   }
 
-  async rollback(_params: Record<string, unknown>): Promise<ActionRunnerResult> {
+  async rollback(
+    _params: Record<string, unknown>,
+    _previousOutput?: Record<string, unknown> | null,
+    _service?: any,
+    _context?: ActionExecutionContext,
+  ): Promise<ActionRunnerResult> {
     return {
       success: true,
       output: {
