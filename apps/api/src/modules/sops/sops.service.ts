@@ -322,11 +322,14 @@ export class SopsService {
       // Attempt pgvector native distance operator
       let sql = `
         SELECT c.id as "chunkId", c."documentId", c.content, d.title as "documentTitle", d."sourceType", d."sourceUrl",
+               d."qualityScore", d."createdAt" as "docCreatedAt",
                (1 - (c.embedding <=> '${formattedVector}'::vector)) as "similarityScore"
         FROM knowledge_chunks c
         JOIN knowledge_documents d ON d.id = c."documentId"
         WHERE c."organizationId" = '${orgId}'
           AND c.embedding IS NOT NULL
+          AND d.status = 'ACTIVE'
+          AND d."isAuthoritative" = true
       `;
 
       if (serviceId) {
@@ -335,7 +338,7 @@ export class SopsService {
 
       sql += `
         ORDER BY c.embedding <=> '${formattedVector}'::vector ASC
-        LIMIT ${topK};
+        LIMIT ${topK * 2};
       `;
 
       const rawResults = await prisma.$queryRawUnsafe<
@@ -346,25 +349,40 @@ export class SopsService {
           documentTitle: string;
           sourceType: string;
           sourceUrl?: string | null;
+          qualityScore?: number | null;
+          docCreatedAt?: Date | string | null;
           similarityScore: number | string;
         }>
       >(sql);
 
       if (rawResults && rawResults.length > 0) {
         const filtered = rawResults
-          .map((r) => ({
-            chunkId: r.chunkId,
-            documentId: r.documentId,
-            documentTitle: r.documentTitle,
-            sourceType: r.sourceType as DocumentSourceType,
-            sourceUrl: r.sourceUrl,
-            content: r.content,
-            similarityScore: Number(r.similarityScore) || 0,
-          }))
+          .map((r) => {
+            const baseScore = Number(r.similarityScore) || 0;
+            let qualityWeight = 1.0;
+            if (r.sourceType === 'POSTMORTEM') {
+              qualityWeight = 0.95 * (r.qualityScore ? Math.max(0.85, Number(r.qualityScore)) : 0.9);
+            }
+            const docCreated = r.docCreatedAt ? new Date(r.docCreatedAt).getTime() : Date.now();
+            const ageDays = (Date.now() - docCreated) / (1000 * 60 * 60 * 24);
+            const recencyFactor = Math.exp(-0.00385 * Math.min(365, Math.max(0, ageDays)));
+            const finalScore = Math.max(0, baseScore * qualityWeight * recencyFactor);
+
+            return {
+              chunkId: r.chunkId,
+              documentId: r.documentId,
+              documentTitle: r.documentTitle,
+              sourceType: r.sourceType as DocumentSourceType,
+              sourceUrl: r.sourceUrl,
+              content: r.content,
+              similarityScore: Math.round(finalScore * 100) / 100,
+            };
+          })
           .filter((r) => r.similarityScore >= minScore);
 
         if (filtered.length > 0) {
-          return filtered;
+          filtered.sort((a, b) => b.similarityScore - a.similarityScore);
+          return filtered.slice(0, topK);
         }
       }
     } catch {
@@ -375,13 +393,15 @@ export class SopsService {
     const chunks = await prisma.knowledgeChunk.findMany({
       where: {
         organizationId: orgId,
-        ...(serviceId
-          ? {
-              document: {
+        document: {
+          status: 'ACTIVE',
+          isAuthoritative: true,
+          ...(serviceId
+            ? {
                 OR: [{ serviceId }, { serviceId: null }],
-              },
-            }
-          : {}),
+              }
+            : {}),
+        },
       },
       include: {
         document: true,
@@ -393,6 +413,14 @@ export class SopsService {
       const chunkVector = metadata.vector || [];
       const score = cosineSimilarity(queryVector, chunkVector);
 
+      let qualityWeight = 1.0;
+      if (chunk.document.sourceType === 'POSTMORTEM') {
+        qualityWeight = 0.95 * (chunk.document.qualityScore ? Math.max(0.85, chunk.document.qualityScore) : 0.9);
+      }
+      const ageDays = (Date.now() - new Date(chunk.document.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      const recencyFactor = Math.exp(-0.00385 * Math.min(365, Math.max(0, ageDays)));
+      const finalScore = Math.max(0, score * qualityWeight * recencyFactor);
+
       return {
         chunkId: chunk.id,
         documentId: chunk.documentId,
@@ -400,7 +428,7 @@ export class SopsService {
         sourceType: chunk.document.sourceType as DocumentSourceType,
         sourceUrl: chunk.document.sourceUrl,
         content: chunk.content,
-        similarityScore: Math.max(0, score),
+        similarityScore: Math.round(finalScore * 100) / 100,
       };
     });
 
@@ -480,6 +508,45 @@ export class SopsService {
     }
 
     return Array.from(docMap.values());
+  }
+
+  async indexDocumentChunksPublic(documentId: string, orgId: string, content: string) {
+    return this.indexDocumentChunks(documentId, orgId, content);
+  }
+
+  async deprecateDocument(orgId: string, documentId: string, actorUserId: string, reason: string): Promise<DocumentResponse> {
+    const doc = await prisma.knowledgeDocument.findUnique({
+      where: { id: documentId },
+    });
+
+    if (!doc || doc.organizationId !== orgId) {
+      throw new NotFoundException({
+        code: ErrorCodes.NOT_FOUND,
+        message: 'Document not found in this organization',
+      });
+    }
+
+    const updated = await prisma.knowledgeDocument.update({
+      where: { id: documentId },
+      data: {
+        status: 'DEPRECATED',
+        isAuthoritative: false,
+        deprecationReason: reason,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        organizationId: orgId,
+        actorUserId: actorUserId && actorUserId.length > 20 ? actorUserId : null,
+        action: 'KNOWLEDGE_DOCUMENT_DEPRECATED',
+        entityType: 'KnowledgeDocument',
+        entityId: documentId,
+        metadataJson: { reason },
+      },
+    });
+
+    return this.mapToResponse(updated);
   }
 
   private async indexDocumentChunks(documentId: string, orgId: string, content: string) {

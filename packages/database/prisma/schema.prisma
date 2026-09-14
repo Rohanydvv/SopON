@@ -98,6 +98,22 @@ enum ActionExecutionStatus {
   ROLLED_BACK
 }
 
+enum PostmortemStatus {
+  DRAFT
+  QUALITY_CHECKING
+  NEEDS_REVIEW
+  APPROVED
+  INDEXED
+  DEPRECATED
+  REJECTED
+}
+
+enum KnowledgeStatus {
+  ACTIVE
+  DEPRECATED
+  ARCHIVED
+}
+
 model User {
   id           String       @id @default(uuid())
   email        String       @unique
@@ -115,6 +131,8 @@ model User {
   approvedActions   ActionExecution[]    @relation("ActionApprover")
   notifications     Notification[]
   auditLogs         AuditLog[]
+  authoredPostmortems Postmortem[]         @relation("PostmortemAuthor")
+  reviewedPostmortems Postmortem[]         @relation("PostmortemReviewer")
 
   @@map("users")
 }
@@ -145,6 +163,7 @@ model Organization {
   auditLogs              AuditLog[]
   vaultCredentials       VaultCredential[]
   serviceCircuitBreakers ServiceCircuitBreaker[]
+  postmortems            Postmortem[]
 
   @@map("organizations")
 }
@@ -235,6 +254,7 @@ model Service {
   knowledgeDocuments KnowledgeDocument[]
   vaultCredentials   VaultCredential[]
   circuitBreaker     ServiceCircuitBreaker?
+  postmortems        Postmortem[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -273,6 +293,7 @@ model Incident {
   actionExecutions ActionExecution[]
   sla              IncidentSLA?
   aiAnalyses       AIAnalysis[]
+  postmortem       Postmortem?
 
   @@index([organizationId, status, severity, createdAt])
   @@index([organizationId, teamId, status])
@@ -381,6 +402,8 @@ model OrganizationRemediationPolicy {
   requireApprovalForProduction Boolean  @default(false)
   circuitBreakerStrikeThreshold Int     @default(3)
   circuitBreakerWindowMinutes   Int     @default(60)
+  autoIndexVerifiedPostmortems Boolean  @default(true)
+  minPostmortemQualityScore    Float    @default(0.85)
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
@@ -439,25 +462,77 @@ model IncidentSLA {
 }
 
 model KnowledgeDocument {
-  id             String   @id @default(uuid())
-  organizationId String
-  serviceId      String?
-  title          String
-  sourceType     String   @default("RUNBOOK")
-  sourceUrl      String?
-  content        String
-  tags           String[] @default([])
-  version        Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String          @id @default(uuid())
+  organizationId    String
+  serviceId         String?
+  title             String
+  sourceType        String          @default("RUNBOOK")
+  sourceUrl         String?
+  content           String
+  tags              String[]        @default([])
+  version           Int             @default(1)
+  status            KnowledgeStatus @default(ACTIVE)
+  isAuthoritative   Boolean         @default(true)
+  incidentId        String?
+  qualityScore      Float?
+  deprecationReason String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   service      Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   chunks       KnowledgeChunk[]
+  postmortem   Postmortem?
 
   @@index([organizationId, createdAt])
   @@index([organizationId, serviceId])
+  @@index([organizationId, status])
   @@map("knowledge_documents")
+}
+
+model Postmortem {
+  id                    String           @id @default(uuid())
+  organizationId        String
+  incidentId            String           @unique
+  serviceId             String?
+  title                 String
+  summary               String           @db.Text
+  rootCause             String           @db.Text
+  contributingFactors   String[]         @default([])
+  remediationAction     String
+  remediationSteps      String[]         @default([])
+  preventionItems       String[]         @default([])
+  detectionTimeMinutes  Int?
+  resolutionTimeMinutes Int?
+
+  status                PostmortemStatus @default(DRAFT)
+  qualityScore          Float            @default(0.0)
+  qualityDetailsJson    Json?
+
+  isAuthoritative       Boolean          @default(false)
+  documentId            String?          @unique
+
+  authorUserId          String?
+  reviewedByUserId      String?
+  reviewedAt            DateTime?
+  reviewNotes           String?
+
+  deprecatedAt          DateTime?
+  deprecatedReason      String?
+
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incident       Incident           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service        Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  document       KnowledgeDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  authorUser     User?              @relation("PostmortemAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  reviewedByUser User?              @relation("PostmortemReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([organizationId, serviceId])
+  @@map("postmortems")
 }
 
 model KnowledgeChunk {

@@ -16,6 +16,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { VaultModule } from './modules/vault/vault.module';
 import { CircuitBreakerModule } from './modules/circuit-breaker/circuit-breaker.module';
 import { AutonomousModule } from './modules/autonomous/autonomous.module';
+import { PostmortemsModule } from './modules/postmortems/postmortems.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AutonomousModule } from './modules/autonomous/autonomous.module';
     VaultModule,
     CircuitBreakerModule,
     AutonomousModule,
+    PostmortemsModule,
   ],
   providers: [
     {
